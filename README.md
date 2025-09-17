@@ -34,7 +34,6 @@ Hệ thống **Ứng dụng tra cứu thời tiết trực tuyến** được x�
 - Người dùng có thể nhập tên thành phố và nhận thông tin thời tiết ngay lập tức
 - Hỗ trợ nhiều thành phố trên toàn thế giới, dữ liệu cập nhật theo thời gian thực
 - Giao diện client hiện đại với các thông báo trạng thái rõ ràng
-- Mock data tích hợp sẵn trong **Server.java** cho việc test khi chưa có API key
 - Log hoạt động chi tiết giúp theo dõi quá trình giao tiếp
 
 ## 🔧 2. Công nghệ & Ngôn ngữ sử dụng
@@ -113,7 +112,7 @@ WeatherApp/
 
 📧 **Email**: nguyennguyenvh09@gmail.com  
 🏫 **Trường**: Đại học Đại Nam - Khoa Công nghệ Thông tin  
-🔬 **Lab**: AIoTLab - [Facebook](https://www.facebook.com/DNUAIoTLab)
+
 
 ---
 
