@@ -37,6 +37,6 @@
 
 © 2025 AIoTLab, Faculty of Information Technology, DaiNam University. All rights reserved.
 ## ✉️5. Liên hệ 
-Email: ![Gmail](https://img.shields.io/badge/Gmail-D14836?style=for-the-badge&logo=gmail&logoColor=white) nguyennguyenvh09@gmail.com
+Email: ![Gmail](https://cdn-icons-png.flaticon.com/512/281/281769.png) nguyennguyenvh09@gmail.com
 
 ---
