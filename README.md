@@ -110,6 +110,7 @@ WeatherApp/
 ## ✉️ 5. Liên hệ
 
 **Tác giả**: Nguyễn Đào Nguyên Giáp 
+
 📧 **Email**: nguyennguyenvh09@gmail.com  
 🏫 **Trường**: Đại học Đại Nam - Khoa Công nghệ Thông tin  
 🔬 **Lab**: AIoTLab - [Facebook](https://www.facebook.com/DNUAIoTLab)
