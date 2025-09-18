@@ -54,13 +54,10 @@ Hệ thống **Ứng dụng tra cứu thời tiết trực tuyến** được x�
 ## 🚀 3. Một số hình ảnh
 
 ### Giao diện chính của Client
-![Client Interface](docs/client-interface.png)
+![Client Interface](docs/Screenshot%202025-09-18%20074042.png)
 
 ### Kết quả tra cứu thời tiết
-![Weather Result](docs/weather-result.png)
-
-### Server Console Log
-![Server Console](docs/server-console.png)
+![Weather Result](docs/Screenshot%202025-09-18%20074227.png)
 
 ## 📝 4. Các bước cài đặt
 
