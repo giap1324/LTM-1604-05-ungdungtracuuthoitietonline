@@ -49,7 +49,7 @@ Hệ thống **Ứng dụng tra cứu thời tiết trực tuyến** được x�
 - **Socket Programming**: Giao tiếp Client-Server qua TCP
 - **HTTP Client**: Kết nối với WeatherAPI.com
 - **JSON Parsing**: Xử lý dữ liệu JSON từ API (custom parser)
-- **Multithreading**: ExecutorService cho xử lý đồng thời
+
 
 ## 🚀 3. Một số hình ảnh
 
