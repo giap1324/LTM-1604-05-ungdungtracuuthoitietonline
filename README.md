@@ -55,6 +55,14 @@ Hệ thống **Ứng dụng tra cứu thời tiết trực tuyến** được x�
 
 ### Giao diện chính của Client
 ![Client Interface](docs/Screenshot%202025-09-18%20074042.png)
+Dự án Weather Client cho phép người dùng **kết nối tới Weather Server** và tra cứu thông tin thời tiết theo thành phố.  
+Ứng dụng sử dụng **giao thức TCP** để kết nối Client–Server đảm bảo dữ liệu truyền tin cậy, ổn định.
+
+## 🚀 Chức năng chính
+- **Kết nối Server**: Kết nối/Ngắt kết nối/Test kết nối với Server.
+- **Tra cứu thời tiết**: Nhập tên thành phố và lấy dữ liệu thời tiết.
+- **Hiển thị thông tin**: Thành phố, Nhiệt độ, Mô tả, Độ ẩm, Tốc độ gió, Thời gian.
+- **Log hoạt động**: Ghi lại trạng thái kết nối và các sự kiện.
 
 ### Kết quả tra cứu thời tiết
 ![Weather Result](docs/Screenshot%202025-09-18%20074227.png)
