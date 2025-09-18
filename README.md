@@ -92,16 +92,6 @@ Hệ thống **Ứng dụng tra cứu thời tiết trực tuyến** được x�
 4. **Sử dụng**:
    - Nhấn "Kết nối" → Nhập tên thành phố → "Tra cứu thời tiết"
 
-### Cấu trúc dự án:
-```
-WeatherApp/
-├── src/WeatherApp/
-│   ├── Client.java           # GUI Client application
-│   ├── Server.java           # Multi-threaded server (chứa mock data)
-│   ├── WeatherProtocol.java  # Protocol definitions
-│   └── module-info.java      # Java module configuration
-└── docs/                     # Documentation and images
-```
 
 ## ✉️ 5. Liên hệ
 
