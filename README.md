@@ -68,19 +68,19 @@ Hệ thống **Ứng dụng tra cứu thời tiết trực tuyến** được x�
 
 ### Cài đặt và chạy:
 
-1. **Cấu hình API Key** (tùy chọn):
+**Cấu hình API Key** (tùy chọn):
    - Đăng ký tài khoản tại [WeatherAPI.com](https://www.weatherapi.com/)
    - Thay thế API key trong `Server.java`:
    ```java
    private static final String API_KEY = "YOUR_API_KEY_HERE";
    ```
 
-2. **Biên dịch dự án**:
+**Biên dịch dự án**:
    ```bash
    javac -d bin src/WeatherApp/*.java
    ```
 
-3. **Chạy ứng dụng**:
+**Chạy ứng dụng**:
    ```bash
    # Chạy Server trước
    java -cp bin WeatherApp.Server
@@ -89,7 +89,7 @@ Hệ thống **Ứng dụng tra cứu thời tiết trực tuyến** được x�
    java -cp bin WeatherApp.Client
    ```
 
-4. **Sử dụng**:
+**Sử dụng**:
    - Nhấn "Kết nối" → Nhập tên thành phố → "Tra cứu thời tiết"
 
 
