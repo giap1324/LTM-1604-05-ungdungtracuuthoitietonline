@@ -34,7 +34,6 @@ Hệ thống **Ứng dụng tra cứu thời tiết trực tuyến** được x�
 - Người dùng có thể nhập tên thành phố và nhận thông tin thời tiết ngay lập tức
 - Hỗ trợ nhiều thành phố trên toàn thế giới, dữ liệu cập nhật theo thời gian thực
 - Giao diện client hiện đại với các thông báo trạng thái rõ ràng
-- Log hoạt động chi tiết giúp theo dõi quá trình giao tiếp
 
 ## 🔧 2. Công nghệ & Ngôn ngữ sử dụng
 
@@ -54,26 +53,18 @@ Hệ thống **Ứng dụng tra cứu thời tiết trực tuyến** được x�
 ## 🚀 3. Một số hình ảnh
 
 ### Giao diện chính của Client
-![Client Interface](docs/Screenshot%202025-09-18%20074042.png)
+![Client Interface](docs/Screenshot%202025-09-25%20074913.png)
 - Dự án Weather Client cho phép người dùng **kết nối tới Weather Server** và tra cứu thông tin thời tiết theo thành phố.  
 - Ứng dụng sử dụng **giao thức TCP** để kết nối Client–Server đảm bảo dữ liệu truyền tin cậy, ổn định.
 
-  - **Kết nối Server**: Kết nối/Ngắt kết nối/Test kết nối với Server.
-  - **Tra cứu thời tiết**: Nhập tên thành phố và lấy dữ liệu thời tiết.
-  - **Hiển thị thông tin**: Thành phố, Nhiệt độ, Mô tả, Độ ẩm, Tốc độ gió, Thời gian.
-  - **Log hoạt động**: Ghi lại trạng thái kết nối và các sự kiện.
+
 
 ### Kết quả tra cứu thời tiết
-![Weather Result](docs/Screenshot%202025-09-18%20074227.png)  
+![Weather Result](docs/Screenshot%202025-09-25%20074925.png)  
 
 - Người dùng nhập tên thành phố (**hanoi**) và nhấn nút **Tra cứu thời tiết**.  
 - Ứng dụng kết nối với **Weather Server** qua giao thức **TCP** và hiển thị thông tin:  
-  - **Thành phố**: Hanoi, Vietnam  
-  - **Nhiệt độ**: 26.1°C  
-  - **Mô tả**: Partly cloudy  
-  - **Độ ẩm**: 94%  
-  - **Tốc độ gió**: 1.89 m/s  
-  - **Thời gian**: 18/09/2025 07:42:16  
+
 
 ## 📝 4. Các bước cài đặt
 
