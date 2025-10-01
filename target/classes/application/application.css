@@ -1,0 +1,237 @@
+.root {
+    -fx-font-family: 'Arial', 'Segoe UI', sans-serif;
+}
+
+/* ===== DYNAMIC BACKGROUNDS ===== */
+.sunny-background {
+    -fx-background-color: linear-gradient(from 0% 0% to 100% 100%, #667eea 0%, #764ba2 100%);
+}
+
+.cloudy-background {
+    -fx-background-color: linear-gradient(from 0% 0% to 100% 100%, #4da0ff 0%, #6a82fb 100%);
+}
+
+.rainy-background {
+    -fx-background-color: linear-gradient(from 0% 0% to 100% 100%, #2c3e50 0%, #3498db 100%);
+}
+
+.snowy-background {
+    -fx-background-color: linear-gradient(from 0% 0% to 100% 100%, #74b9ff 0%, #0984e3 100%);
+}
+
+.night-background {
+    -fx-background-color: linear-gradient(from 0% 0% to 100% 100%, #0c2461 0%, #1e3799 100%);
+}
+
+.foggy-background {
+    -fx-background-color: linear-gradient(from 0% 0% to 100% 100%, #636e72 0%, #b2bec3 100%);
+}
+
+.stormy-background {
+    -fx-background-color: linear-gradient(from 0% 0% to 100% 100%, #2d3436 0%, #636e72 100%);
+}
+
+/* ===== SEARCH FIELD ===== */
+.search-field {
+    -fx-background-color: rgba(255, 255, 255, 0.95);
+    -fx-background-radius: 30;
+    -fx-padding: 12 25;
+    -fx-border-color: transparent;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.15), 8, 0, 0, 2);
+}
+
+.search-field:focused {
+    -fx-background-color: white;
+    -fx-effect: dropshadow(gaussian, rgba(102, 126, 234, 0.4), 12, 0, 0, 3);
+    -fx-border-color: #667eea;
+    -fx-border-width: 2;
+    -fx-border-radius: 30;
+}
+
+/* ===== LANGUAGE BUTTON ===== */
+.lang-button {
+    -fx-background-color: rgba(255, 255, 255, 0.25);
+    -fx-text-fill: white;
+    -fx-background-radius: 18;
+    -fx-padding: 6 15;
+    -fx-cursor: hand;
+    -fx-border-color: rgba(255, 255, 255, 0.3);
+    -fx-border-width: 1;
+    -fx-border-radius: 18;
+}
+
+.lang-button:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.35);
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.2), 5, 0, 0, 2);
+}
+
+.lang-button:pressed {
+    -fx-background-color: rgba(255, 255, 255, 0.45);
+}
+
+/* ===== WEATHER CARDS ===== */
+.weather-card {
+    -fx-background-color: rgba(255, 255, 255, 0.98);
+    -fx-background-radius: 25;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.12), 20, 0, 0, 8);
+}
+
+.weather-card:hover {
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.18), 25, 0, 0, 10);
+}
+
+/* ===== FORECAST DAY CARDS ===== */
+.forecast-day-card {
+    -fx-background-color: linear-gradient(from 0% 0% to 100% 100%, #f8f9fa 0%, #ffffff 100%);
+    -fx-background-radius: 15;
+    -fx-border-color: rgba(102, 126, 234, 0.15);
+    -fx-border-width: 1;
+    -fx-border-radius: 15;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.08), 10, 0, 0, 3);
+    -fx-cursor: hand;
+}
+
+.forecast-day-card:hover {
+    -fx-background-color: linear-gradient(from 0% 0% to 100% 100%, #ffffff 0%, #f1f3f5 100%);
+    -fx-border-color: rgba(102, 126, 234, 0.3);
+    -fx-effect: dropshadow(gaussian, rgba(102, 126, 234, 0.25), 15, 0, 0, 5);
+}
+
+/* ===== HOURLY CARDS ===== */
+.hourly-card {
+    -fx-background-color: linear-gradient(from 0% 0% to 100% 100%, #ffffff 0%, #f8f9fa 100%);
+    -fx-background-radius: 12;
+    -fx-border-color: rgba(22, 33, 62, 0.1);
+    -fx-border-width: 1;
+    -fx-border-radius: 12;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.06), 8, 0, 0, 2);
+    -fx-cursor: hand;
+}
+
+.hourly-card:hover {
+    -fx-background-color: linear-gradient(from 0% 0% to 100% 100%, #f8f9fa 0%, #e9ecef 100%);
+    -fx-border-color: rgba(233, 69, 96, 0.3);
+    -fx-effect: dropshadow(gaussian, rgba(233, 69, 96, 0.2), 12, 0, 0, 4);
+}
+
+/* ===== SCROLL PANE ===== */
+.scroll-pane {
+    -fx-background-color: transparent;
+    -fx-background: transparent;
+}
+
+.scroll-pane .viewport {
+    -fx-background-color: transparent;
+}
+
+.scroll-pane .scroll-bar:horizontal,
+.scroll-pane .scroll-bar:vertical {
+    -fx-background-color: transparent;
+}
+
+.scroll-pane .scroll-bar:horizontal .track,
+.scroll-pane .scroll-bar:vertical .track {
+    -fx-background-color: rgba(0, 0, 0, 0.05);
+    -fx-background-radius: 5;
+}
+
+.scroll-pane .scroll-bar:horizontal .thumb,
+.scroll-pane .scroll-bar:vertical .thumb {
+    -fx-background-color: rgba(102, 126, 234, 0.4);
+    -fx-background-radius: 5;
+}
+
+.scroll-pane .scroll-bar:horizontal .thumb:hover,
+.scroll-pane .scroll-bar:vertical .thumb:hover {
+    -fx-background-color: rgba(102, 126, 234, 0.6);
+}
+
+.scroll-pane .scroll-bar:horizontal .thumb:pressed,
+.scroll-pane .scroll-bar:vertical .thumb:pressed {
+    -fx-background-color: rgba(102, 126, 234, 0.8);
+}
+
+/* ===== SEPARATOR ===== */
+.separator {
+    -fx-background-color: rgba(0, 0, 0, 0.1);
+}
+
+/* ===== DETAIL DIALOG STYLES ===== */
+.detail-dialog {
+    -fx-background-color: linear-gradient(from 0% 0% to 100% 100%, #667eea 0%, #764ba2 100%);
+}
+
+.detail-card {
+    -fx-background-color: rgba(255, 255, 255, 0.95);
+    -fx-background-radius: 25;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.15), 20, 0, 0, 10);
+    -fx-padding: 25;
+}
+
+.compact-hour-box {
+    -fx-background-color: rgba(248, 249, 250, 0.8);
+    -fx-background-radius: 10;
+    -fx-border-color: rgba(0, 0, 0, 0.1);
+    -fx-border-width: 1;
+    -fx-border-radius: 10;
+    -fx-cursor: hand;
+}
+
+.compact-hour-box:hover {
+    -fx-background-color: rgba(233, 69, 96, 0.1);
+    -fx-border-color: rgba(233, 69, 96, 0.3);
+}
+
+.stat-card {
+    -fx-background-color: rgba(255, 255, 255, 0.9);
+    -fx-background-radius: 15;
+    -fx-border-color: rgba(0, 0, 0, 0.05);
+    -fx-border-width: 1;
+    -fx-border-radius: 15;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.08), 5, 0, 0, 2);
+}
+
+.search-suggestion-item {
+    -fx-background-color: transparent;
+    -fx-cursor: hand;
+    -fx-border-color: transparent;
+}
+
+.search-suggestion-item:hover {
+    -fx-background-color: #f8f9fa;
+}
+
+.suggestions-box {
+    -fx-background-color: white;
+    -fx-background-radius: 0 0 10 10;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.2), 10, 0, 0, 2);
+    -fx-border-color: #e9ecef;
+    -fx-border-width: 0 1 1 1;
+}
+
+/* ===== WEATHER ICONS EFFECT ===== */
+.weather-icon-sunny {
+    -fx-effect: dropshadow(gaussian, rgba(255, 215, 0, 0.5), 20, 0, 0, 0);
+}
+
+.weather-icon-rainy {
+    -fx-effect: dropshadow(gaussian, rgba(52, 152, 219, 0.3), 15, 0, 0, 0);
+}
+
+.weather-icon-snowy {
+    -fx-effect: dropshadow(gaussian, rgba(255, 255, 255, 0.5), 15, 0, 0, 0);
+}
+
+.weather-icon-stormy {
+    -fx-effect: dropshadow(gaussian, rgba(255, 255, 0, 0.3), 20, 0, 0, 0);
+}.weather-card {
+    -fx-background-color: rgba(255, 255, 255, 0.65);
+    -fx-background-radius: 20;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 10, 0, 0, 3);
+}
+
+.hourly-card {
+    -fx-background-color: rgba(255, 255, 255, 0.7);
+    -fx-background-radius: 12;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.08), 5, 0, 0, 2);
+}
