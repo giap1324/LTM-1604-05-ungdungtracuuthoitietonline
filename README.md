@@ -41,14 +41,18 @@ Hệ thống **Ứng dụng tra cứu thời tiết trực tuyến** được x�
 [![Java](https://img.shields.io/badge/Java-007396?style=for-the-badge&logo=java&logoColor=white)](https://www.java.com/)
 [![Swing GUI](https://img.shields.io/badge/Swing_GUI-ED8B00?style=for-the-badge&logo=java&logoColor=white)](https://docs.oracle.com/javase/tutorial/uiswing/)
 [![WeatherAPI](https://img.shields.io/badge/WeatherAPI-00A1F1?style=for-the-badge&logo=cloud&logoColor=white)](https://www.weatherapi.com/)
+[![MySQL](https://img.shields.io/badge/MySQL-4479A1?style=for-the-badge&logo=mysql&logoColor=white)](https://www.mysql.com/)
 
 
-**Chi tiết công nghệ:**
-- **Java SE 23+**: Ngôn ngữ lập trình chính
-- **Java Swing**: Xây dựng giao diện người dùng
-- **Socket Programming**: Giao tiếp Client-Server qua TCP
-- **HTTP Client**: Kết nối với WeatherAPI.com
-- **JSON Parsing**: Xử lý dữ liệu JSON từ API (custom parser)
+
+## 🚀 Chi tiết công nghệ
+- **Java SE 23+**: Ngôn ngữ lập trình chính  
+- **Java Swing**: Xây dựng giao diện người dùng  
+- **Socket Programming**: Giao tiếp Client-Server qua TCP  
+- **HTTP Client**: Kết nối với WeatherAPI.com  
+- **JSON Parsing**: Xử lý dữ liệu JSON từ API (custom parser)  
+- **MySQL**: Lưu trữ dữ liệu (thành phố yêu thích)
+
 
 
 ## 🚀 3. Một số hình ảnh
