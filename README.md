@@ -1,3 +1,32 @@
+
+<h2 align="center">
+    <a href="https://dainam.edu.vn/vi/khoa-cong-nghe-thong-tin">
+        🎓 Faculty of Information Technology (DaiNam University)
+    </a>
+</h2>
+
+<h2 align="center">
+    Ứng dụng tra cứu thời tiết online
+</h2>
+
+<div align="center">
+    <p align="center">
+        <img src="docs/aiotlab_logo.png" alt="AIoTLab Logo" width="170"/>
+        <img src="docs/fitdnu_logo.png" alt="FIT Logo" width="180"/>
+        <img src="docs/dnu_logo.png" alt="DaiNam University Logo" width="200"/>
+    </p>
+
+[![AIoTLab](https://img.shields.io/badge/AIoTLab-green?style=for-the-badge)](https://www.facebook.com/DNUAIoTLab)
+[![Faculty of Information Technology](https://img.shields.io/badge/Faculty%20of%20Information%20Technology-blue?style=for-the-badge)](https://dainam.edu.vn/vi/khoa-cong-nghe-thong-tin)
+[![DaiNam University](https://img.shields.io/badge/DaiNam%20University-orange?style=for-the-badge)](https://dainam.edu.vn)
+
+</div>
+
+---
+
+
+
+
 ## 1. Giới thiệu hệ thống
 
 Hệ thống **Ứng dụng tra cứu thời tiết trực tuyến** được xây dựng theo mô hình **Client-Server** sử dụng **JavaFX** nhằm:
@@ -54,6 +83,7 @@ Hiển thị thông tin thời tiết chi tiết: nhiệt độ, độ ẩm, gi�
 ![Favourite](docs/Screenshot%202025-10-02%20071418.png)  
 Lưu và quản lý danh sách thành phố yêu thích với MySQL để truy cập nhanh.  
 
+## Bản đồ thời tiết 
 
 
 ## 📝 4. Các bước cài đặt
