@@ -1,0 +1,37 @@
+.scroll-pane {
+    -fx-background-color: transparent;
+}
+
+.scroll-bar:vertical {
+    -fx-pref-width: 8px;
+    -fx-background-color: transparent;
+}
+
+.scroll-bar:horizontal {
+    -fx-pref-height: 8px;
+    -fx-background-color: transparent;
+}
+
+/* Track */
+.scroll-bar .track {
+    -fx-background-color: transparent;
+}
+
+/* Thumb (phần kéo) */
+.scroll-bar .thumb {
+    -fx-background-color: rgba(150,150,150,0.4);
+    -fx-background-radius: 4px;
+    -fx-padding: 2;
+    -fx-background-insets: 1;
+    -fx-effect: dropshadow(two-pass-box, rgba(0,0,0,0.15), 3, 0.0, 0, 0);
+}
+
+/* Khi hover */
+.scroll-bar .thumb:hover {
+    -fx-background-color: rgba(120,120,120,0.7);
+}
+
+/* Khi click kéo */
+.scroll-bar .thumb:pressed {
+    -fx-background-color: rgba(90,90,90,0.9);
+}

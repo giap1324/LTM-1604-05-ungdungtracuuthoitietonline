@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<launchConfiguration type="org.eclipse.jdt.launching.localJavaApplication">
+    <listAttribute key="org.eclipse.debug.core.MAPPED_RESOURCE_PATHS">
+        <listEntry value="/app123/src/application/WeatherUI.java"/>
+    </listAttribute>
+    <listAttribute key="org.eclipse.debug.core.MAPPED_RESOURCE_TYPES">
+        <listEntry value="1"/>
+    </listAttribute>
+    <stringAttribute key="org.eclipse.jdt.launching.MAIN_TYPE" value="application.WeatherUI"/>
+    <stringAttribute key="org.eclipse.jdt.launching.PROJECT_ATTR" value="app123"/>
+    <stringAttribute key="org.eclipse.jdt.launching.VM_ARGUMENTS" value="-Dsun.java2d.opengl=true&#13;&#10;-Dprism.order=sw&#13;&#10;-Dprism.vsync=false&#13;&#10;-Djavafx.animation.fullspeed=true&#13;&#10;-Djavafx.autoproxy.disable=true&#13;&#10;--add-exports javafx.graphics/com.sun.javafx.application=ALL-UNNAMED&#13;&#10;--add-exports javafx.base/com.sun.javafx.event=ALL-UNNAMED"/>
+</launchConfiguration>

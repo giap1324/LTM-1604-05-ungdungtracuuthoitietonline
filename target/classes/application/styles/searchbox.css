@@ -1,0 +1,68 @@
+/* Container tổng */
+.search-box {
+    -fx-background-color: rgba(255,255,255,0.12);
+    -fx-background-radius: 25;
+    -fx-border-color: rgba(255,255,255,0.3);
+    -fx-border-radius: 25;
+    -fx-border-width: 1.5;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.25), 12, 0, 0, 4);
+}
+
+/* TextField */
+.search-textfield {
+    -fx-font-family: "Segoe UI", "Arial";
+    -fx-background-color: rgba(255,255,255,0.25);
+    -fx-background-radius: 20;
+    -fx-text-fill: white;
+    -fx-prompt-text-fill: rgba(255,255,255,0.6);
+    -fx-font-size: 14px;
+    -fx-padding: 0 18 0 18;
+    -fx-border-color: rgba(255,255,255,0.4);
+    -fx-border-radius: 20;
+    -fx-border-width: 1.5;
+    -fx-transition: all 0.2s ease-in-out;
+}
+
+.search-textfield.focused {
+    -fx-background-color: rgba(255,255,255,0.35);
+    -fx-border-color: rgba(255,255,255,0.6);
+    -fx-border-width: 2;
+}
+
+/* Base button circular style */
+.circle-btn {
+    -fx-background-radius: 50%;
+    -fx-cursor: hand;
+    -fx-font-size: 16px;
+    -fx-border-width: 1.2;
+    -fx-border-radius: 50%;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.18), 8, 0, 0, 2);
+    -fx-transition: all 0.15s ease-in-out;
+}
+
+.circle-btn:hover {
+    -fx-scale-x: 1.06;
+    -fx-scale-y: 1.06;
+}
+
+/* Search button (vàng) */
+.search-btn {
+    -fx-background-color: linear-gradient(to bottom, #FFD700, #FFB800);
+    -fx-border-color: rgba(255,255,255,0.5);
+    -fx-text-fill: #2c3e50;
+}
+
+.search-btn:pressed {
+    -fx-background-color: linear-gradient(to bottom, #e6c200, #cc9a00);
+}
+
+/* Location button (xanh dương) */
+.location-btn {
+    -fx-background-color: linear-gradient(to bottom, #6ec1ff, #3aa0ff);
+    -fx-border-color: rgba(255,255,255,0.3);
+    -fx-text-fill: white;
+}
+
+.location-btn:pressed {
+    -fx-background-color: linear-gradient(to bottom, #3aa0ff, #0078ff);
+}
