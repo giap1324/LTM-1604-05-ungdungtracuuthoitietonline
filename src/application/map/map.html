@@ -1,0 +1,443 @@
+     String htmlContent = """
+<!DOCTYPE html>
+<html>
+<head>
+   <meta charset="UTF-8">
+   <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+   <title>Weather Radar Map</title>
+   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+   <style>
+        * {
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
+        }
+        
+        html, body { 
+            margin: 0; 
+            padding: 0; 
+            background: #0f0f1e;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            overflow: hidden;
+            width: 100%;
+            height: 100%;
+        }
+        
+        #map { 
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #1a1a2e;
+        }
+        
+        .leaflet-container {
+            font-size: 12px;
+        }
+        
+        .leaflet-tile-container img {
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: crisp-edges;
+        }
+        
+        .leaflet-popup-content-wrapper {
+            background: rgba(20, 30, 48, 0.95);
+            color: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(52, 152, 219, 0.4);
+            backdrop-filter: blur(10px);
+        }
+        
+        .leaflet-popup-content {
+            margin: 15px;
+            font-size: 13px;
+        }
+        
+        .leaflet-popup-tip {
+            background: rgba(20, 30, 48, 0.95);
+        }
+        
+		.weather-legend {
+		    background: rgba(20, 20, 35, 0.92);
+		    padding: 14px;
+		    border-radius: 12px;
+		    width: 190px;
+		    font-size: 13px;
+		    color: #fff;
+		    border: 1px solid rgba(120, 120, 160, 0.25);
+		    box-shadow: 0 4px 16px rgba(0,0,0,0.45);
+		}
+
+		.legend-row {
+		    display: flex;
+		    align-items: center;
+		    margin-bottom: 8px;
+		}
+
+		.legend-color {
+		    width: 22px;
+		    height: 12px;
+		    border-radius: 4px;
+		    margin-right: 10px;
+		}
+
+		.legend-text {
+		    color: #e6eaff;
+		    font-size: 13px;
+		}
+
+
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+	<div class="item"><span>🔵 Blue</span> <span>Light rain</span></div>
+
+    <!-- Load Leaflet after DOM element exists -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <script>
+        // Execute immediately - DOMContentLoaded may not fire reliably in JavaFX WebView
+        (function() {
+            const API_KEY = '6b1eed84b2f428b079f017d13cc8a953';
+            
+           
+            // Initialize map centered on Vietnam
+            window.map = L.map('map', {
+                center: [16.0, 108.0],
+                zoom: 6,
+                zoomControl: true,
+                attributionControl: true,
+                preferCanvas: false,
+                renderer: L.canvas({ tolerance: 5 })
+            });
+			
+            
+            // Dark base map with better tile rendering
+            const baseLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; OpenStreetMap | CARTO',
+                subdomains: 'abcd',
+                maxZoom: 20,
+                detectRetina: false,
+                tileSize: 256,
+                zoomOffset: 0
+            }).addTo(window.map);
+            
+            // Weather layer
+            window.weatherLayer = null;
+            
+            window.setWeatherLayer = function(layerType, opacity) {
+                try {
+                    if (window.weatherLayer) {
+                        window.map.removeLayer(window.weatherLayer);
+                    }
+                    
+                    window.weatherLayer = L.tileLayer(
+                        'https://tile.openweathermap.org/map/' + layerType + '/{z}/{x}/{y}.png?appid=' + API_KEY,
+                        {
+                            attribution: 'Weather data © OpenWeatherMap',
+                            opacity: opacity || 0.7,
+                            maxZoom: 18,
+                            tileSize: 256,
+                            zoomOffset: 0,
+                            detectRetina: false,
+                            crossOrigin: true,
+                            errorTileUrl: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+                        }
+                    );
+                    
+                    // Add event listeners for tile loading
+                    window.weatherLayer.on('tileloadstart', function() {
+                        console.log('⏳ Loading weather tiles...');
+                    });
+                    
+                    window.weatherLayer.on('tileload', function() {
+                        console.log('✓ Weather tile loaded');
+                    });
+                    
+                    window.weatherLayer.on('tileerror', function(error) {
+                        console.warn('⚠ Weather tile error:', error);
+                    });
+                    
+                    window.weatherLayer.on('load', function() {
+                        console.log('✓ All weather tiles loaded successfully');
+                    });
+                    
+                    window.weatherLayer.addTo(window.map);
+                    console.log('✓ Weather layer set: ' + layerType + ' with opacity: ' + (opacity || 0.7));
+					window.updateLegend(layerType);
+
+                } catch(e) {
+                    console.error('❌ Error setting weather layer:', e);
+                }
+            };
+            
+            window.setLayerOpacity = function(opacity) {
+                try {
+                    if (window.weatherLayer) {
+                        window.weatherLayer.setOpacity(opacity);
+                    }
+                } catch(e) {
+                    console.error('Error setting opacity:', e);
+                }
+            };
+            
+            // Major Vietnamese cities
+            const vietnamCities = [
+                {name: 'Hà Nội', lat: 21.0285, lng: 105.8542},
+                {name: 'TP.HCM', lat: 10.8231, lng: 106.6297},
+                {name: 'Đà Nẵng', lat: 16.0544, lng: 108.2022},
+                {name: 'Hải Phòng', lat: 20.8449, lng: 106.6881},
+                {name: 'Cần Thơ', lat: 10.0452, lng: 105.7469},
+                {name: 'Huế', lat: 16.4637, lng: 107.5909},
+                {name: 'Nha Trang', lat: 12.2388, lng: 109.1967},
+                {name: 'Vũng Tàu', lat: 10.3460, lng: 107.0843},
+                {name: 'Quy Nhơn', lat: 13.7830, lng: 109.2196},
+                {name: 'Đà Lạt', lat: 11.9404, lng: 108.4583}
+            ];
+            
+            // Add city markers
+            vietnamCities.forEach(city => {
+                const marker = L.circleMarker([city.lat, city.lng], {
+                    radius: 6,
+                    fillColor: '#3498db',
+                    color: '#fff',
+                    weight: 2,
+                    opacity: 0.9,
+                    fillOpacity: 0.6
+                }).addTo(window.map);
+                
+                marker.on('click', function() {
+                    fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${city.lat}&lon=${city.lng}&appid=${API_KEY}&units=metric&lang=vi`)
+                        .then(r => r.json())
+                        .then(d => {
+                            marker.bindPopup(`
+                                <div style="font-size:13px; color:white;">
+                                    <strong style="color:#4db8ff; font-size:15px;">${city.name}</strong><br>
+                                    <div style="font-size:26px; font-weight:bold; color:#fbbf24;">
+                                        ${Math.round(d.main.temp)}°C
+                                    </div>
+                                    <div>
+                                        Cảm nhận: ${Math.round(d.main.feels_like)}°C<br>
+                                        Độ ẩm: ${d.main.humidity}%<br>
+                                        Gió: ${d.wind.speed} m/s<br>
+                                        Mô tả: ${d.weather[0].description}
+                                    </div>
+                                </div>
+                            `).openPopup();
+                        })
+                        .catch(e => console.error('Weather fetch error:', e));
+                });
+                
+                // Add city label
+                L.marker([city.lat, city.lng], {
+                    icon: L.divIcon({
+                        className: 'city-label',
+                        html: '<div style="color:white; font-size:11px; font-weight:bold; text-shadow:1px 1px 3px rgba(0,0,0,0.8); white-space:nowrap;">' + city.name + '</div>',
+                        iconSize: [100, 20],
+                        iconAnchor: [50, -8]
+                    })
+                }).addTo(window.map);
+            });
+            
+            // Scale control
+            L.control.scale({
+                imperial: false,
+                metric: true,
+                position: 'bottomright'
+            }).addTo(window.map);
+            
+            // Custom legend
+            const legend = L.control({position: 'bottomleft'});
+            
+			window.updateLegend = function(layerType) {
+			    const div = document.querySelector(".weather-legend");
+			    if (!div) return;
+
+			    let html = "";
+
+			    switch(layerType) {
+
+			        case "clouds_new":
+			            html = `
+			                <h4 style="margin:0 0 10px 0; color:#89c4ff;">☁ Cloud Cover</h4>
+
+			                <div class="legend-row">
+			                    <div class="legend-color" style="background:#ffffff;"></div>
+			                    <span class="legend-text">Clouds</span>
+			                </div>
+
+			                <div class="legend-row">
+			                    <div class="legend-color" style="background:#888;"></div>
+			                    <span class="legend-text">Thick clouds</span>
+			                </div>
+			            `;
+			        break;
+
+			        case "temp_new":
+			            html = `
+			                <h4 style="margin:0 0 10px 0; color:#ffcc66;">🌡 Temperature</h4>
+
+			                <div class="legend-row">
+			                    <div class="legend-color" style="background:#00baff;"></div>
+			                    <span class="legend-text">Cold</span>
+			                </div>
+
+			                <div class="legend-row">
+			                    <div class="legend-color" style="background:#ffe75f;"></div>
+			                    <span class="legend-text">Warm</span>
+			                </div>
+
+			                <div class="legend-row">
+			                    <div class="legend-color" style="background:#ff4b4b;"></div>
+			                    <span class="legend-text">Hot</span>
+			                </div>
+			            `;
+			        break;
+
+			        case "wind_new":
+			            html = `
+			                <h4 style="margin:0 0 10px 0; color:#7fe1ff;">💨 Wind Speed</h4>
+
+			                <div class="legend-row">
+			                    <div class="legend-color" style="background:#66ccff;"></div>
+			                    <span class="legend-text">Calm</span>
+			                </div>
+
+			                <div class="legend-row">
+			                    <div class="legend-color" style="background:#66ff99;"></div>
+			                    <span class="legend-text">Breezy</span>
+			                </div>
+
+			                <div class="legend-row">
+			                    <div class="legend-color" style="background:#ffe75f;"></div>
+			                    <span class="legend-text">Strong</span>
+			                </div>
+
+			                <div class="legend-row">
+			                    <div class="legend-color" style="background:#ff4b4b;"></div>
+			                    <span class="legend-text">Severe</span>
+			                </div>
+			            `;
+			        break;
+
+			        case "pressure_new":
+			            html = `
+			                <h4 style="margin:0 0 10px 0; color:#a0b8ff;">🔵 Pressure</h4>
+
+			                <div class="legend-row">
+			                    <div class="legend-color" style="background:#66ccff;"></div>
+			                    <span class="legend-text">Low pressure</span>
+			                </div>
+
+			                <div class="legend-row">
+			                    <div class="legend-color" style="background:#ff4b4b;"></div>
+			                    <span class="legend-text">High pressure</span>
+			                </div>
+			            `;
+			        break;
+
+			        default: /* precipitation_new */
+			            html = `
+			                <h4 style="margin:0 0 10px 0; color:#6fc3ff;">🌧 Rainfall</h4>
+
+			                <div class="legend-row">
+			                    <div class="legend-color" style="background:#00aaff;"></div>
+			                    <span class="legend-text">Light rain</span>
+			                </div>
+
+			                <div class="legend-row">
+			                    <div class="legend-color" style="background:#33cc33;"></div>
+			                    <span class="legend-text">Moderate rain</span>
+			                </div>
+
+			                <div class="legend-row">
+			                    <div class="legend-color" style="background:#ffdd33;"></div>
+			                    <span class="legend-text">Heavy rain</span>
+			                </div>
+
+			                <div class="legend-row">
+			                    <div class="legend-color" style="background:#ff3333;"></div>
+			                    <span class="legend-text">Very heavy rain</span>
+			                </div>
+			            `;
+			        break;
+			    }
+
+			    div.innerHTML = html + `
+			        <p style="margin-top:12px; font-size:11px; opacity:0.7;">
+			            Click map to view coordinates
+			        </p>
+			    `;
+			};
+
+
+			legend.onAdd = function() {
+			    const div = L.DomUtil.create("div", "weather-legend");
+
+			    div.innerHTML = `
+			        <h4 style="margin:0 0 10px 0; color:#6fc3ff;">🌧 Rainfall</h4>
+
+			        <div class="legend-row">
+			            <div class="legend-color" style="background:#00aaff;"></div>
+			            <span class="legend-text">Light rain</span>
+			        </div>
+
+			        <div class="legend-row">
+			            <div class="legend-color" style="background:#33cc33;"></div>
+			            <span class="legend-text">Moderate rain</span>
+			        </div>
+
+			        <div class="legend-row">
+			            <div class="legend-color" style="background:#ffdd33;"></div>
+			            <span class="legend-text">Heavy rain</span>
+			        </div>
+
+			        <div class="legend-row">
+			            <div class="legend-color" style="background:#ff3333;"></div>
+			            <span class="legend-text">Very heavy rain</span>
+			        </div>
+
+			        <p style="margin-top:12px; font-size:11px; opacity:0.7;">
+			            Click map to view coordinates
+			        </p>
+			    `;
+
+			    return div;
+			};
+
+            
+        	legend.addTo(window.map);
+
+			// update lần đầu sau khi legend xuất hiện
+			setTimeout(() => {
+			    window.updateLegend('precipitation_new');
+			}, 50);
+            
+    
+            
+            // Initialize default weather layer immediately
+            window.setWeatherLayer('precipitation_new', 0.7);
+            
+            // Signal that map is ready
+            window.mapReady = true;
+            
+            // Also set a global flag for debugging
+            if (typeof window !== 'undefined') {
+                window.leafletLoaded = true;
+                window.functionsReady = typeof window.setWeatherLayer === 'function' && 
+                                        typeof window.setLayerOpacity === 'function';
+            }
+            
+            console.log('✓ Weather Radar Map initialized');
+            console.log('✓ mapReady:', window.mapReady);
+            console.log('✓ functionsReady:', window.functionsReady);
+            console.log('✓ Default precipitation layer added');
+        })();  // Execute immediately
+    </script>
+</body>
+</html>
+    
