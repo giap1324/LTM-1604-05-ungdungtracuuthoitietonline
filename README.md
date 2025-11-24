@@ -51,7 +51,6 @@ Hệ thống **Ứng dụng tra cứu thời tiết trực tuyến** được x�
 
 [![Java](https://img.shields.io/badge/Java_23-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white)](https://openjdk.org/)
 [![JavaFX](https://img.shields.io/badge/JavaFX-007396?style=for-the-badge&logo=java&logoColor=white)](https://openjfx.io/)
-[![Maven](https://img.shields.io/badge/Maven-C71A36?style=for-the-badge&logo=apache-maven&logoColor=white)](https://maven.apache.org/)
 [![MySQL](https://img.shields.io/badge/MySQL-4479A1?style=for-the-badge&logo=mysql&logoColor=white)](https://www.mysql.com/)
 [![OpenWeatherMap](https://img.shields.io/badge/OpenWeatherMap-EB6E4B?style=for-the-badge&logo=openstreetmap&logoColor=white)](https://openweathermap.org/)
 
@@ -72,19 +71,16 @@ Hệ thống **Ứng dụng tra cứu thời tiết trực tuyến** được x�
 ## 🚀 3. Một số hình ảnh
 
 ### Giao diện chính của Client  
-![Client Interface](docs/Screenshot%202025-10-02%20071332.png)  
+![Client Interface](docs/Screenshot%2025-11-24%081849.png)  
 Kết nối **Weather Server** qua TCP, nhập tên thành phố để tra cứu thời tiết.  
 
 ### Chi tiết thời tiết  
-![Weather Result](docs/Screenshot%202025-10-02%20071404.png)  
+![Weather Result](docs/Screenshot%2025-11-24%082542.png)  
 Hiển thị thông tin thời tiết chi tiết: nhiệt độ, độ ẩm, gió, trạng thái bầu trời.  
-
-### Thành phố yêu thích  
-![Favourite](docs/Screenshot%202025-10-02%20071418.png)  
-Lưu và quản lý danh sách thành phố yêu thích với MySQL để truy cập nhanh.  
-
+ 
 ## Bản đồ thời tiết 
-
+![Weather Map](docs/Screenshot%2025-11-24%081304.png")
+Cho phép xem lớp mưa (precipitation), mây (clouds), nhiệt độ (temp), gió (wind) với độ phân giải cao theo thời gian thực.
 
 ## 📝 4. Các bước cài đặt
 
