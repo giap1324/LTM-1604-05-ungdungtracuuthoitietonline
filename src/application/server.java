@@ -1,260 +1,445 @@
 package application;
 
-import java.io.*;
-import java.net.*;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.net.HttpURLConnection;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.URL;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
 
-public class server {
-
-    private static final String API_KEY = "6b1eed84b2f428b079f017d13cc8a953";
+public class Server {
+    private static final String API_KEY = "f703b7ff3e074702874145120250110";
+    private static final String CURRENT_API = "http://api.weatherapi.com/v1/current.json";
+    private static final String FORECAST_API = "http://api.weatherapi.com/v1/forecast.json";
+    private static final String SEARCH_API = "http://api.weatherapi.com/v1/search.json";
 
     public static void main(String[] args) {
-        // Ensure favorites table exists and has a uniqueness constraint to avoid duplicates
-        ensureFavoritesTable();
-
-        try (ServerSocket ss = new ServerSocket(2000)) {
-            System.out.println("🌤 Weather Server started on port 5000...");
-
+        try (ServerSocket ss = new ServerSocket(5000)) {
+            System.out.println("Weather Server started on port 5000!");
+            System.out.println("Waiting for clients...");
             while (true) {
                 Socket connSocket = ss.accept();
                 System.out.println("Client connected: " + connSocket.getInetAddress());
-
-                // Mỗi client chạy trên 1 thread riêng
-                new Thread(() -> handleClient(connSocket)).start();
+                new Thread(new ClientHandler(connSocket)).start();
             }
-
         } catch (IOException e) {
-            System.err.println("❌ Cannot start server: " + e.getMessage());
+            System.out.println("Cannot start server on port 5000!");
+            e.printStackTrace();
         }
     }
 
-    /**
-     * Ensure the favorites table exists and enforce uniqueness (username, city, country).
-     * If duplicates already exist, migrate by copying distinct rows into a new table.
-     */
-    private static void ensureFavoritesTable() {
-        String url = "jdbc:mysql://localhost:3306/weatherdb?useSSL=false&allowPublicKeyRetrieval=true";
-        String user = "root";
-        String pass = "123456";
+    static class ClientHandler implements Runnable {
+        private Socket socket;
 
-        try (Connection conn = DriverManager.getConnection(url, user, pass);
-             Statement st = conn.createStatement()) {
+        public ClientHandler(Socket socket) {
+            this.socket = socket;
+        }
 
-            // If table does not exist, create it with UNIQUE constraint
-            String create = "CREATE TABLE IF NOT EXISTS favorites (" +
-                    "id INT AUTO_INCREMENT PRIMARY KEY, " +
-                    "username VARCHAR(64) DEFAULT 'guest', " +
-                    "city VARCHAR(200) NOT NULL, " +
-                    "country CHAR(2) NOT NULL, " +
-                    "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
-                    "UNIQUE KEY ux_fav (username, city, country)" +
-                    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
-            st.execute(create);
+        @Override
+        public void run() {
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
+                 BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8))) {
+                String request;
+                while ((request = br.readLine()) != null) {
+                    System.out.println("Received: " + request);
+                    String response = handleRequest(request);
+                    bw.write(response);
+                    bw.newLine();
+                    bw.flush();
+                }
+            } catch (IOException e) {
+                System.out.println("Client disconnected: " + e.getMessage());
+            } finally {
+                try { if (socket != null && !socket.isClosed()) socket.close(); } catch (IOException ignored) {}
+            }
+        }
 
-            // If table existed previously without unique index, attempt to dedupe by creating a temp table
-            // and copying distinct rows (group by username,city,country keeping earliest created_at)
-            // This is safe to run even if no duplicates exist.
-            String createTmp = "CREATE TABLE IF NOT EXISTS favorites_tmp (" +
-                    "id INT AUTO_INCREMENT PRIMARY KEY, " +
-                    "username VARCHAR(64) DEFAULT 'guest', " +
-                    "city VARCHAR(200) NOT NULL, " +
-                    "country CHAR(2) NOT NULL, " +
-                    "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
-                    "UNIQUE KEY ux_fav (username, city, country)" +
-                    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
-            st.execute(createTmp);
-
-            // Copy distinct rows into tmp (keep the earliest created_at for each trio)
-            String copyDistinct = "INSERT IGNORE INTO favorites_tmp (username, city, country, created_at) " +
-                    "SELECT username, city, country, MIN(created_at) FROM favorites GROUP BY username, city, country";
+        private String handleRequest(String request) {
             try {
-                st.executeUpdate(copyDistinct);
-                // Swap tables only if copy succeeded (and only if favorites_tmp contains rows)
-                String countTmp = "SELECT COUNT(*) AS c FROM favorites_tmp";
-                try (ResultSet rs = st.executeQuery(countTmp)) {
-                    if (rs.next() && rs.getInt("c") > 0) {
-                        // Rename original to backup and tmp to favorites
-                        st.execute("RENAME TABLE favorites TO favorites_old, favorites_tmp TO favorites");
-                        // Drop backup
-                        st.execute("DROP TABLE IF EXISTS favorites_old");
-                    }
+                if (request == null || request.trim().isEmpty()) return "ERROR|Empty request";
+                String[] parts = request.split("\\|");
+                if (parts.length == 0) return "ERROR|Bad request format";
+                String command = parts[0].trim().toUpperCase();
+
+                switch (command) {
+                    case "CURRENT":
+                        if (parts.length < 2) return "ERROR|Missing param";
+                        if (parts[1].startsWith("LAT:")) {
+                            String[] coords = parts[1].substring(4).split(",");
+                            if (coords.length < 2) return "ERROR|Bad coords";
+                            return fetchCurrentWeather(coords[0].trim() + "," + coords[1].trim());
+                        }
+                        return fetchCurrentWeather(URLEncoder.encode(parts[1].trim(), "UTF-8"));
+
+                    case "FORECAST":
+                        if (parts.length < 3) return "ERROR|Missing params";
+                        String query = parts[1].startsWith("LAT:") ? 
+                            parts[1].substring(4) : URLEncoder.encode(parts[1].trim(), "UTF-8");
+                        return fetchForecast(query, parts[2].trim());
+
+                    case "RESOLVE":
+                        if (parts.length < 2) return "ERROR|Missing city";
+                        return resolveCoordsCommand(parts[1].trim());
+
+                    case "DETAILED":
+                        if (parts.length < 3) return "ERROR|Missing params";
+                        String detailQuery = parts[1].startsWith("LAT:") ? 
+                            parts[1].substring(4) : URLEncoder.encode(parts[1].trim(), "UTF-8");
+                        return fetchDetailedWeather(detailQuery, parts[2].trim());
+                    case "SEARCH":
+                        if (parts.length < 2) return "ERROR|Missing search query";
+                        return searchCities(URLEncoder.encode(parts[1].trim(), "UTF-8"));
+                    default:
+                        return "ERROR|Unknown command";
                 }
-            } catch (SQLException ex) {
-                // If something went wrong during copy (e.g., favorites table empty), ignore and continue
-                System.err.println("Favorites dedupe/migrate warning: " + ex.getMessage());
+            } catch (Exception e) {
+                e.printStackTrace();
+                return "ERROR|" + e.getMessage();
             }
-
-        } catch (SQLException e) {
-            System.err.println("Could not ensure favorites table: " + e.getMessage());
         }
-    }
+        private String searchCities(String query) {
+            try {
+                String url = SEARCH_API + "?key=" + API_KEY + "&q=" + query;
+                String json = makeHttpRequest(url);
+                if (json == null || json.startsWith("ERROR")) return json;
+                return parseSearchResults(json);
+            } catch (Exception e) {
+                return "ERROR|" + e.getMessage();
+            }
+        }
+        private String resolveCoordsCommand(String city) {
+            try {
+                String coords = resolveToCoords(city);
+                if (coords.isEmpty()) return "ERROR|No coordinates found";
+                String[] ll = coords.split(",");
+                return "COORDS|" + ll[0] + "|" + ll[1];
+            } catch (Exception e) {
+                return "ERROR|" + e.getMessage();
+            }
+        }
 
-    private static void handleClient(Socket connSocket) {
-        try (
-            BufferedReader br = new BufferedReader(
-                new InputStreamReader(connSocket.getInputStream(), StandardCharsets.UTF_8)
-            );
-            BufferedWriter bw = new BufferedWriter(
-                new OutputStreamWriter(connSocket.getOutputStream(), StandardCharsets.UTF_8)
-            )
-        ) {
-            String request;
-            while ((request = br.readLine()) != null) {
-                System.out.println("🔵 Received: " + request);
+        private String resolveToCoords(String city) {
+            try {
+                String url = SEARCH_API + "?key=" + API_KEY + "&q=" + URLEncoder.encode(city, "UTF-8");
+                String json = makeHttpRequest(url);
+                if (json == null || json.length() < 10) return "";
 
-                if (request.startsWith("ADD_FAV")) {
-                    String[] parts = request.split(":");
-                    System.out.println("🔵 ADD_FAV parts: " + java.util.Arrays.toString(parts));
-                    if (parts.length >= 3) {
-                        String city = parts[1].trim();
-                        String country = parts[2].trim();
-                        System.out.println("🔵 Adding: city='" + city + "', country='" + country + "'");
-                        addFavoriteToDB(city, country);
-                        bw.write("OK: Added to favorites");
-                        bw.newLine(); bw.flush();
-                    }
-                    continue;
-                } else if (request.startsWith("DEL_FAV")) {
-                    String[] parts = request.split(":");
-                    System.out.println("🔵 DEL_FAV parts: " + java.util.Arrays.toString(parts));
-                    if (parts.length >= 3) {
-                        String city = parts[1].trim();
-                        String country = parts[2].trim();
-                        System.out.println("🔵 Removing: city='" + city + "', country='" + country + "'");
-                        removeFavoriteFromDB(city, country);
-                        bw.write("OK: Removed from favorites");
-                        bw.newLine(); bw.flush();
-                    }
-                    continue;
-                } else if (request.equals("GET_FAV")) {
-                    System.out.println("🔵 Processing GET_FAV...");
-                    String favList = getFavoritesFromDB();
-                    System.out.println("🔵 GET_FAV result: '" + favList + "'");
-                    bw.write(favList);
-                    bw.newLine(); bw.flush();
-                    System.out.println("🔵 GET_FAV sent to client");
-                    continue;
+                int latIdx = json.indexOf("\"lat\":");
+                int lonIdx = json.indexOf("\"lon\":");
+                if (latIdx != -1 && lonIdx != -1) {
+                    String lat = extractValue(json.substring(latIdx), "\"lat\":", ",");
+                    String lon = extractValue(json.substring(lonIdx), "\"lon\":", ",");
+                    if (!lat.isEmpty() && !lon.isEmpty()) return lat + "," + lon;
                 }
-
-                // các xử lý khác (Hanoi, coord:lat,lon, v.v)
-                String jsonResponse = getWeather(request.trim());
-                bw.write(jsonResponse);
-                bw.newLine(); bw.flush();
+                return "";
+            } catch (Exception e) {
+                return "";
             }
-
-
-        } catch (IOException e) {
-            System.err.println("Client disconnected: " + e.getMessage());
         }
-    }
 
-    private static String getWeather(String city) {
-        try {
-            String apiUrl;
-            // Nếu client gửi theo dạng coord:lat,lon -> dùng lat/lon API
-            if (city != null && city.toLowerCase().startsWith("coord:")) {
-                String coordPart = city.substring(6).trim(); // lat,lon
-                String[] parts = coordPart.split(",");
-                if (parts.length >= 2) {
-                    String lat = URLEncoder.encode(parts[0].trim(), StandardCharsets.UTF_8);
-                    String lon = URLEncoder.encode(parts[1].trim(), StandardCharsets.UTF_8);
-                    apiUrl = "https://api.openweathermap.org/data/2.5/forecast?lat=" + lat + "&lon=" + lon + "&appid=" + API_KEY + "&units=metric&lang=vi";
+        private String formatDateForHour(String time) {
+            try {
+                if (time.length() >= 10) {
+                    return time.substring(0, 10);
+                }
+            } catch (Exception e) {
+                // Ignore
+            }
+            return time;
+        }
+
+        private String extractValue(String text, String start, String end) {
+            try {
+                int idx = text.indexOf(start);
+                if (idx == -1) return "";
+                idx += start.length();
+                int endIdx = "\"".equals(end) ? text.indexOf("\"", idx) : text.indexOf(end, idx);
+                if (endIdx == -1) endIdx = text.length();
+                String val = text.substring(idx, Math.min(endIdx, text.length())).trim();
+                if (val.startsWith("\"") && val.endsWith("\"")) val = val.substring(1, val.length() - 1);
+                return val;
+            } catch (Exception e) {
+                return "";
+            }
+        }
+
+        private String extractJsonValue(String json, String key) {
+            try {
+                int idx = json.indexOf(key);
+                if (idx == -1) return "";
+                int start = idx + key.length();
+                while (start < json.length() && (json.charAt(start) == ' ' || json.charAt(start) == '"' || json.charAt(start) == ':')) start++;
+                if (start >= json.length()) return "";
+                boolean quoted = json.charAt(start - 1) == '"';
+                int end = start;
+                if (quoted) {
+                    end = json.indexOf("\"", start);
                 } else {
-                    // fallback to city query if parsing fails
-                    String encodedCity = URLEncoder.encode(city, StandardCharsets.UTF_8);
-                    apiUrl = "https://api.openweathermap.org/data/2.5/forecast?q=" + encodedCity + "&appid=" + API_KEY + "&units=metric&lang=vi";
+                    while (end < json.length() && json.charAt(end) != ',' && json.charAt(end) != '}') end++;
                 }
-            } else {
-                String encodedCity = URLEncoder.encode(city, StandardCharsets.UTF_8);
-                apiUrl = "https://api.openweathermap.org/data/2.5/forecast?q=" + encodedCity + "&appid=" + API_KEY + "&units=metric&lang=vi";
+                return json.substring(start, end).trim();
+            } catch (Exception e) {
+                return "";
             }
-
-            HttpURLConnection conn = (HttpURLConnection) new URL(apiUrl).openConnection();
-            conn.setRequestMethod("GET");
-
-            int code = conn.getResponseCode();
-            InputStream is = (code == 200)
-                ? conn.getInputStream()
-                : conn.getErrorStream();
-
-            String json = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-            conn.disconnect();
-            return json;
-
-        } catch (Exception e) {
-            return "{\"error\":\"" + e.getMessage().replace("\"", "'") + "\"}";
         }
-    }
-    private static void addFavoriteToDB(String city, String country) {
-        try (Connection conn = DriverManager.getConnection(
-                "jdbc:mysql://localhost:3306/weatherdb?useSSL=false&allowPublicKeyRetrieval=true",
-                "root", "123456")) {
 
-            String sql = "INSERT IGNORE INTO favorites(username, city, country) VALUES ('default', ?, ?)";
-            PreparedStatement ps = conn.prepareStatement(sql);
-            ps.setString(1, city);
-            ps.setString(2, country);
-            int updated = ps.executeUpdate();
-            System.out.println("✅ DB insert, affected=" + updated + ", city='" + city + "', country='" + country + "'");
-
-        } catch (SQLException e) {
-            System.err.println("❌ DB insert error: " + e.getMessage());
-            e.printStackTrace();
-        }
-    }
-
-    private static void removeFavoriteFromDB(String city, String country) {
-        try (Connection conn = DriverManager.getConnection(
-                "jdbc:mysql://localhost:3306/weatherdb?useSSL=false&allowPublicKeyRetrieval=true",
-                "root", "123456")) {
-
-            String sql = "DELETE FROM favorites WHERE username='default' AND city = ? AND country = ?";
-            PreparedStatement ps = conn.prepareStatement(sql);
-            ps.setString(1, city);
-            ps.setString(2, country);
-            int deleted = ps.executeUpdate();
-            System.out.println("✅ DB delete, affected=" + deleted + ", city='" + city + "', country='" + country + "'");
-
-        } catch (SQLException e) {
-            System.err.println("❌ DB delete error: " + e.getMessage());
-            e.printStackTrace();
-        }
-    }
-
-
-    private static String getFavoritesFromDB() {
-        StringBuilder sb = new StringBuilder();
-        try (Connection conn = DriverManager.getConnection(
-                "jdbc:mysql://localhost:3306/weatherdb?useSSL=false&allowPublicKeyRetrieval=true", "root", "123456")) {
-            Statement st = conn.createStatement();
-            System.out.println("📊 Querying favorites from DB...");
-            ResultSet rs = st.executeQuery("SELECT city, country FROM favorites WHERE username='default' ORDER BY created_at DESC");
-            boolean first = true;
-            int count = 0;
-            while (rs.next()) {
-                String city = rs.getString("city");
-                String country = rs.getString("country");
-                System.out.println("📊 Row " + (++count) + ": city='" + city + "', country='" + country + "'");
-                if (!first) {
-                    sb.append("|");
+        private String formatTime(String time) {
+            try {
+                if (time.contains(" ")) {
+                    return time;
+                } else if (time.length() >= 5) {
+                    return time.substring(0, 5);
                 }
-                sb.append(city).append(",").append(country);
-                first = false;
+            } catch (Exception e) {
+                // Ignore
             }
-            System.out.println("📊 Total rows: " + count);
-        } catch (SQLException e) {
-            System.err.println("❌ DB query error: " + e.getMessage());
-            e.printStackTrace();
+            return time;
         }
-        String result = sb.toString();
-        System.out.println("📊 GET_FAV returning: '" + result + "'");
-        return result;
-    }
 
+        private String fetchCurrentWeather(String query) {
+            try {
+                String url = CURRENT_API + "?key=" + API_KEY + "&q=" + query + "&aqi=no&lang=vi";
+                String json = makeHttpRequest(url);
+                if (json == null || json.startsWith("ERROR")) return json;
+                return parseCurrentWeather(json);
+            } catch (Exception e) {
+                return "ERROR|" + e.getMessage();
+            }
+        }
+
+        private String fetchForecast(String query, String days) {
+            try {
+                String url = FORECAST_API + "?key=" + API_KEY + "&q=" + query + "&days=" + days + "&aqi=no&lang=vi";
+                String json = makeHttpRequest(url);
+                if (json == null || json.startsWith("ERROR")) return json;
+                return parseForecast(json);
+            } catch (Exception e) {
+                return "ERROR|" + e.getMessage();
+            }
+        }
+
+        private String fetchDetailedWeather(String query, String date) {
+            try {
+                String url = FORECAST_API + "?key=" + API_KEY + "&q=" + query + "&days=1&aqi=no&lang=vi&dt=" + date;
+                String json = makeHttpRequest(url);
+                if (json == null || json.startsWith("ERROR")) return json;
+                return parseDetailedWeather(json);
+            } catch (Exception e) {
+                return "ERROR|" + e.getMessage();
+            }
+        }
+
+        private String makeHttpRequest(String urlString) {
+            HttpURLConnection conn = null;
+            try {
+                URL url = new URL(urlString);
+                conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("GET");
+                conn.setConnectTimeout(10000);
+                conn.setReadTimeout(10000);
+
+                int code = conn.getResponseCode();
+                InputStream in = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
+                if (in == null) return "ERROR|HTTP " + code;
+
+                BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
+                StringBuilder response = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) response.append(line);
+                reader.close();
+
+                return (code >= 200 && code < 300) ? response.toString() : "ERROR|HTTP " + code;
+            } catch (IOException e) {
+                return "ERROR|" + e.getMessage();
+            } finally {
+                if (conn != null) conn.disconnect();
+            }
+        }
+
+        private String parseCurrentWeather(String json) {
+            try {
+                return String.format("CURRENT|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s",
+                    extractJsonValue(json, "\"name\":"),
+                    extractJsonValue(json, "\"country\":"),
+                    extractJsonValue(json, "\"temp_c\":"),
+                    extractJsonValue(json, "\"humidity\":"),
+                    extractJsonValue(json, "\"text\":"),
+                    extractJsonValue(json, "\"wind_dir\":"),
+                    extractJsonValue(json, "\"wind_kph\":"),
+                    extractJsonValue(json, "\"feelslike_c\":"),
+                    extractJsonValue(json, "\"cloud\":"),
+                    extractJsonValue(json, "\"uv\":"),
+                    extractJsonValue(json, "\"icon\":"));
+            } catch (Exception e) {
+                return "ERROR|Parse error";
+            }
+        }
+
+        private String parseForecast(String json) {
+            try {
+                StringBuilder result = new StringBuilder("FORECAST|");
+                result.append(extractJsonValue(json, "\"name\":"));
+
+                int fcIdx = json.indexOf("\"forecastday\":");
+                if (fcIdx == -1) return "ERROR|No forecast data";
+
+                String fcSection = json.substring(fcIdx);
+                int pos = 0, dayCount = 0;
+
+                while (dayCount < 5) {
+                    int dateIdx = fcSection.indexOf("\"date\":\"", pos);
+                    if (dateIdx == -1) break;
+                    
+                    String date = fcSection.substring(dateIdx + 8, fcSection.indexOf("\"", dateIdx + 8));
+                    String section = fcSection.substring(dateIdx, Math.min(dateIdx + 2000, fcSection.length()));
+                    
+                    result.append("|").append(date)
+                        .append(",").append(extractValue(section, "\"maxtemp_c\":", ","))
+                        .append(",").append(extractValue(section, "\"mintemp_c\":", ","))
+                        .append(",").append(extractValue(section, "\"text\":\"", "\""))
+                        .append(",").append(extractValue(section, "\"icon\":\"", "\""))
+                        .append(",").append(extractValue(section, "\"daily_chance_of_rain\":", ","));
+                    
+                    dayCount++;
+                    pos = dateIdx + date.length() + 10;
+                }
+
+                result.append("|HOURLY");
+                int hourIdx = fcSection.indexOf("\"hour\":[");
+                if (hourIdx != -1) {
+                    String hourSection = fcSection.substring(hourIdx);
+                    pos = 0;
+                    int hourCount = 0;
+                    
+                    while (pos < hourSection.length() && hourCount < 24) {
+                        int timeIdx = hourSection.indexOf("\"time\":\"", pos);
+                        if (timeIdx == -1) break;
+                        
+                        int timeEnd = hourSection.indexOf("\"", timeIdx + 8);
+                        String time = hourSection.substring(timeIdx + 8, timeEnd);
+                        String temp = extractValue(hourSection.substring(timeEnd, Math.min(timeEnd + 100, hourSection.length())), "\"temp_c\":", ",");
+                        
+                        if (temp.isEmpty()) { pos = timeEnd; continue; }
+                        
+                        String cond = extractValue(hourSection.substring(timeEnd, Math.min(timeEnd + 200, hourSection.length())), "\"text\":\"", "\"");
+                        String icon = extractValue(hourSection.substring(timeEnd, Math.min(timeEnd + 300, hourSection.length())), "\"icon\":\"", "\"");
+                        String rain = extractValue(hourSection.substring(timeEnd, Math.min(timeEnd + 400, hourSection.length())), "\"chance_of_rain\":", ",");
+                        
+                        result.append("|").append(time).append(",").append(temp)
+                            .append(",").append(cond).append(",").append(icon).append(",").append(rain);
+                        
+                        hourCount++;
+                        pos = timeEnd;
+                    }
+                }
+
+                return result.toString();
+            } catch (Exception e) {
+                e.printStackTrace();
+                return "ERROR|Parse error";
+            }
+        }
+        private String parseSearchResults(String json) {
+            try {
+                StringBuilder result = new StringBuilder("SEARCH");
+                
+                int pos = 0;
+                int count = 0;
+                
+                while (pos < json.length() && count < 10) {
+                    int nameIdx = json.indexOf("\"name\":\"", pos);
+                    if (nameIdx == -1) break;
+                    
+                    int nameEnd = json.indexOf("\"", nameIdx + 8);
+                    if (nameEnd == -1) break;
+                    String name = json.substring(nameIdx + 8, nameEnd);
+                    
+                    int countryIdx = json.indexOf("\"country\":\"", nameEnd);
+                    if (countryIdx == -1) break;
+                    
+                    int countryEnd = json.indexOf("\"", countryIdx + 11);
+                    if (countryEnd == -1) break;
+                    String country = json.substring(countryIdx + 11, countryEnd);
+                    
+                    result.append("|").append(name).append(",,").append(country);
+                    
+                    count++;
+                    pos = countryEnd;
+                }
+                
+                return result.toString();
+            } catch (Exception e) {
+                e.printStackTrace();
+                return "ERROR|Parse error: " + e.getMessage();
+            }
+        }
+
+        private String parseDetailedWeather(String json) {
+            try {
+                StringBuilder result = new StringBuilder("DETAILED");
+                
+                // Lấy thông tin mặt trời mọc/lặn
+                String sunrise = extractJsonValue(json, "\"sunrise\":\"");
+                String sunset = extractJsonValue(json, "\"sunset\":\"");
+                
+                // Lấy thông tin current weather cho các chi tiết khác
+                String humidity = extractJsonValue(json, "\"humidity\":");
+                String windSpeed = extractJsonValue(json, "\"wind_kph\":");
+                String windDir = extractJsonValue(json, "\"wind_dir\":");
+                String uv = extractJsonValue(json, "\"uv\":");
+                
+                result.append("|").append(sunrise.isEmpty() ? "06:00 AM" : formatTime(sunrise))
+                      .append("|").append(sunset.isEmpty() ? "06:00 PM" : formatTime(sunset))
+                      .append("|").append(humidity.isEmpty() ? "75" : humidity)
+                      .append("|").append(windSpeed.isEmpty() ? "15" : windSpeed)
+                      .append("|").append(windDir.isEmpty() ? "NE" : windDir)
+                      .append("|").append(uv.isEmpty() ? "5" : uv);
+                
+                // Thêm hourly data
+                result.append("|HOURLY");
+                
+                int hourIdx = json.indexOf("\"hour\":[");
+                if (hourIdx != -1) {
+                    String hourSection = json.substring(hourIdx);
+                    int pos = 0;
+                    int hourCount = 0;
+                    
+                    while (pos < hourSection.length() && hourCount < 8) {
+                        int timeIdx = hourSection.indexOf("\"time\":\"", pos);
+                        if (timeIdx == -1) break;
+                        
+                        int timeEnd = hourSection.indexOf("\"", timeIdx + 8);
+                        String time = hourSection.substring(timeIdx + 8, timeEnd);
+                        
+                        // Kiểm tra xem có phải là ngày đang xét không
+                        if (!time.contains(formatDateForHour(time))) {
+                            pos = timeEnd;
+                            continue;
+                        }
+                        
+                        String temp = extractValue(hourSection.substring(timeEnd, Math.min(timeEnd + 100, hourSection.length())), "\"temp_c\":", ",");
+                        String cond = extractValue(hourSection.substring(timeEnd, Math.min(timeEnd + 200, hourSection.length())), "\"text\":\"", "\"");
+                        String icon = extractValue(hourSection.substring(timeEnd, Math.min(timeEnd + 300, hourSection.length())), "\"icon\":\"", "\"");
+                        
+                        result.append("|").append(time).append(",").append(temp)
+                              .append(",").append(cond).append(",").append(icon);
+                        
+                        hourCount++;
+                        pos = timeEnd;
+                    }
+                }
+                
+                return result.toString();
+            } catch (Exception e) {
+                e.printStackTrace();
+                return "ERROR|Parse error";
+            }
+        }
+    }
 }

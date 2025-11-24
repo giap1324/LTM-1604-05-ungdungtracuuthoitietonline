@@ -1,0 +1,26 @@
+/* Nền dropdown */
+.combo-box-popup .list-view {
+    -fx-background-color: #0f1c2e;      /* xanh đậm */
+    -fx-control-inner-background: #0f1c2e;
+    -fx-background-insets: 0;
+}
+
+/* Mỗi dòng */
+.combo-box-popup .list-cell {
+    -fx-background-color: #0f1c2e;
+    -fx-text-fill: white;
+    -fx-font-size: 14px;
+    -fx-padding: 8px 10px;
+}
+
+/* Hover */
+.combo-box-popup .list-cell:hover {
+    -fx-background-color: #1f3b80;     /* xanh nhấn */
+    -fx-text-fill: white;
+}
+
+/* Selected */
+.combo-box-popup .list-cell:selected {
+    -fx-background-color: #1a73e8;     /* xanh Google đẹp */
+    -fx-text-fill: white;
+}

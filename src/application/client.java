@@ -1,1209 +1,1545 @@
 package application;
 
-import application.EnvLoader;
-import application.map.WeatherMapWindow;
-
-import javafx.animation.KeyFrame;
-import javafx.animation.Timeline;
+import javafx.animation.FadeTransition;
+import javafx.animation.PauseTransition;
+import javafx.util.Duration;
 import javafx.application.Application;
 import javafx.application.Platform;
+import javafx.geometry.Bounds;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
+import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
-import javafx.scene.paint.CycleMethod;
-import javafx.scene.paint.LinearGradient;
-import javafx.scene.paint.Stop;
-import javafx.scene.Group;
-import javafx.scene.effect.DropShadow;
-import javafx.scene.shape.Circle;
-import javafx.scene.shape.ClosePath;
-import javafx.scene.shape.Line;
-import javafx.scene.shape.LineTo;
-import javafx.scene.shape.MoveTo;
-import javafx.scene.shape.Path;
-import javafx.scene.shape.Polygon;
-import javafx.scene.Node;
-import javafx.scene.shape.StrokeLineCap;
+import javafx.scene.text.Font;
+import javafx.scene.text.FontWeight;
+import javafx.stage.Popup;
 import javafx.stage.Stage;
-import javafx.util.Duration;
+import java.io.*;
+import java.net.Socket;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
-import application.DailyDetailView; 
+import javafx.scene.media.Media;
+import javafx.scene.media.MediaPlayer;
+import javafx.scene.media.MediaView;
 
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.List;
+public class Client extends Application {
+    private Socket socket;
+    private BufferedReader br;
+    private BufferedWriter bw;
 
-/**
- * Main Application - Weather App với layout 2 cột
- */
-public class client extends Application {
-
-    private tcpclient tcpClient;
-    private WeatherUI weatherUI;
-    private WeatherDataParser dataParser;
-    private TextField txtCity;
-    private Button btnSearch;
-    private Button btnMyLocation;
-    // Location card labels (show detected city/country and hint)
-    private Label locationLine1;
-    private Label locationLine2;
-    private Label currentTimeLabel;
-    private Timeline clockTimeline;
-    // Vector clock hand rotations and graphic
-    private javafx.scene.transform.Rotate hourHandRotate;
-    private javafx.scene.transform.Rotate minuteHandRotate;
-    private javafx.scene.transform.Rotate secondHandRotate;
-    private StackPane clockGraphicPane;
+    private TextField cityInput;
     private Label statusLabel;
-    private WeatherMapWindow mapWindow;
-    private String currentCityKey = null;
+    private String currentLocation = "";
+    private boolean isVietnamese = true;
+    private boolean isCelsius = true;
 
+    // Current weather
+    private VBox currentWeatherBox;
+    private Label cityNameLabel, temperatureLabel, feelsLikeLabel;
+    private Label conditionLabel, humidityLabel, windLabel, cloudLabel, uvLabel;
+    private ImageView weatherIcon;
+
+    // Forecast
+    private HBox forecastDaysBox;
+
+    // Hourly
+    private HBox hourlyBox;
+
+    // Language texts
+    private Label titleLabel, currentWeatherTitle, forecastTitle, hourlyTitle;
+    
+    private DatabaseManager dbManager;
+    private Button favoriteBtn;
+    private String currentCity = "";
+    private String currentCountry = "";
+    private double currentLat = 0;
+    private double currentLon = 0;
+
+    private Popup suggestionsPopup;
+    private VBox suggestionsBox;
+    private List<String[]> searchResults = new ArrayList<>();
+    private boolean suggestionsVisible = false;
+
+    // Synchronization object for socket operations
+    private final Object socketLock = new Object();
+    
+    private MediaView mediaView;
+    private MediaPlayer mediaPlayer;
+    private StackPane videoContainer;
+
+    private StackPane createVideoBackground() {
+        videoContainer = new StackPane();
+        videoContainer.setStyle("-fx-background-color: #1a1a2e;");
+        
+        mediaView = new MediaView();
+        mediaView.setPreserveRatio(false);
+        
+        // Bind kích thước video với container
+        mediaView.fitWidthProperty().bind(videoContainer.widthProperty());
+        mediaView.fitHeightProperty().bind(videoContainer.heightProperty());
+        
+        // Tăng độ mờ của video (0.5 = 50% mờ, thấy rõ hơn)
+        mediaView.setOpacity(0.5);
+        
+        videoContainer.getChildren().add(mediaView);
+        
+        return videoContainer;
+    }
+
+    // Method để load video theo điều kiện thời tiết
+    private void loadWeatherVideo(String condition) {
+        if (mediaPlayer != null) {
+            mediaPlayer.stop();
+            mediaPlayer.dispose();
+        }
+        
+        String videoPath = getVideoPathForCondition(condition);
+        
+        try {
+            // Load video từ resources
+            Media media = new Media(getClass().getResource(videoPath).toExternalForm());
+            mediaPlayer = new MediaPlayer(media);
+            
+            // Cấu hình MediaPlayer
+            mediaPlayer.setAutoPlay(true);
+            mediaPlayer.setCycleCount(MediaPlayer.INDEFINITE);
+            mediaPlayer.setVolume(0);
+            mediaPlayer.setMute(true);
+            
+            // Smooth transition khi video restart
+            mediaPlayer.setOnEndOfMedia(() -> {
+                mediaPlayer.seek(Duration.ZERO);
+            });
+            
+            mediaView.setMediaPlayer(mediaPlayer);
+            
+            // Fade in effect với opacity cao hơn
+            FadeTransition fadeIn = new FadeTransition(Duration.millis(1000), mediaView);
+            fadeIn.setFromValue(0);
+            fadeIn.setToValue(0.5); // Tăng từ 0.3 lên 0.5
+            fadeIn.play();
+            
+        } catch (Exception e) {
+            System.out.println("Không thể load video: " + e.getMessage());
+        }
+    }
+
+    // Method để chọn video phù hợp với điều kiện thời tiết
+    private String getVideoPathForCondition(String condition) {
+        condition = condition.toLowerCase();
+        
+        if (condition.contains("rain") || condition.contains("mưa")) {
+            return "/videos/rain.mp4";
+        } else if (condition.contains("snow") || condition.contains("tuyết")) {
+            return "/videos/snow.mp4";
+        } else if (condition.contains("cloud") || condition.contains("mây")) {
+            return "/videos/Sunny.mp4";
+        } else if (condition.contains("storm") || condition.contains("bão")) {
+            return "/videos/storm.mp4";
+        } else if (condition.contains("clear") || condition.contains("nắng")) {
+            return "/videos/Sunny.mp4";
+        } else if (condition.contains("fog") || condition.contains("sương")) {
+            return "/videos/fog.mp4";
+        } else {
+            return "/videos/Sunny.mp4"; // Default video
+        }
+    }
 
     @Override
-    public void start(Stage stage) {
-        tcpClient = new tcpclient("localhost", 2000);
-        weatherUI = new WeatherUI();
-        dataParser = new WeatherDataParser();
-      
+    public void start(Stage primaryStage) {
+        dbManager = new DatabaseManager();
         
-        // Sử dụng layout 3 cột với animated background
-        StackPane mainContainer = createThreeColumnLayout();
-
-        Scene scene = new Scene(mainContainer, 1600, 1000); // Rộng hơn để chứa 3 cột
+        primaryStage.setTitle("Weather Application");
+        
+        // TẠO VIDEO BACKGROUND TRƯỚC
+        StackPane videoBackground = createVideoBackground();
+        
+        // Tạo ScrollPane cho main content
+        ScrollPane mainScroll = new ScrollPane();
+        mainScroll.setFitToWidth(true);
+        mainScroll.setStyle("-fx-background: transparent;");
+        mainScroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        mainScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        
+        VBox root = new VBox(0);
+        root.setStyle("-fx-background-color: transparent;");
+        
+        // Header
+        VBox header = createHeader();
+        root.getChildren().add(header);
+        
+        // Main content container
+        VBox contentBox = new VBox(25);
+        contentBox.setPadding(new Insets(25, 35, 35, 35));
+        contentBox.setAlignment(Pos.TOP_CENTER);
+        
+        // Combined Current Weather + Hourly Section
+        VBox combinedSection = createCombinedWeatherSection();
+        // 5-Day Forecast Section
+        VBox forecastSection = createForecastSection();
+        contentBox.getChildren().addAll(combinedSection, forecastSection);
+        
+        root.getChildren().add(contentBox);
+        
+        // Footer
+        HBox footer = new HBox();
+        footer.setAlignment(Pos.CENTER);
+        footer.setPadding(new Insets(15));
+        statusLabel = new Label(isVietnamese ? "Đang kết nối..." : "Connecting...");
+        statusLabel.setFont(Font.font("Arial", 12));
+        statusLabel.setTextFill(Color.web("#8892b0"));
+        footer.getChildren().add(statusLabel);
+        root.getChildren().add(footer);
+        
+        mainScroll.setContent(root);
+        
+        // STACK VIDEO BACKGROUND VÀ CONTENT
+        StackPane mainContainer = new StackPane();
+        mainContainer.getChildren().addAll(videoBackground, mainScroll);
+        
+        // TẠO SCENE VỚI MAIN CONTAINER
+        Scene scene = new Scene(mainContainer, 1100, 850);
         scene.getStylesheets().add(getClass().getResource("application.css").toExternalForm());
+        primaryStage.setScene(scene);
+        primaryStage.show();
         
-        stage.setTitle("🌤️ Weather App - Tra cứu thời tiết");
-        stage.setScene(scene);
-        stage.setMaximized(true);
-        stage.show();
+        // Kết nối server
+        connectToServer();
         
-        // Bắt đầu đồng hồ thời gian thực
-        startClock();
-        // Load favorites list
         Platform.runLater(() -> {
-            refreshFavoritesList();
-            performGeoSearch();
+            try {
+                Thread.sleep(1000);
+                getCurrentLocationWeather();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
         });
-    }
-
-    // --- Favorites persistence helpers (store as pipe-separated list in Preferences) ---
- // --- Favorites handled via server (MySQL) ---
-    private void addFavorite(String cityKey) {
-        // Use async send and refresh after server confirms to avoid race conditions
-        System.out.println("Adding favorite: " + cityKey);
-        String request = "ADD_FAV:" + cityKey.replace(",", ":");
-        System.out.println("Sending to server: " + request);
         
-        tcpClient.sendAsync(request, resp -> {
-            Platform.runLater(() -> {
-                System.out.println("Server response for ADD_FAV: " + resp);
-                if (statusLabel != null) statusLabel.setText("❤ Đã thêm yêu thích: " + cityKey);
-                refreshFavoritesList();
-            });
-        });
-    }
-
-    private void removeFavorite(String cityKey) {
-        System.out.println("Removing favorite: " + cityKey);
-        String request = "DEL_FAV:" + cityKey.replace(",", ":");
-        System.out.println("Sending to server: " + request);
+        primaryStage.setOnCloseRequest(e -> closeConnection());
         
-        tcpClient.sendAsync(request, resp -> {
-            Platform.runLater(() -> {
-                System.out.println("Server response for DEL_FAV: " + resp);
-                if (statusLabel != null) statusLabel.setText("♡ Đã xóa yêu thích: " + cityKey);
-                refreshFavoritesList();
-            });
-        });
-    }
-
-    private void refreshFavoritesList() {
-        tcpClient.sendAsync("GET_FAV", resp -> {
-            Platform.runLater(() -> {
-                System.out.println("GET_FAV response: '" + resp + "'");
-                
-                if (resp != null && !resp.trim().isEmpty()) {
-                    List<String> favorites = Arrays.stream(resp.split("\\|"))
-                                                   .map(String::trim)
-                                                   .filter(s -> !s.isEmpty() && s.contains(","))
-                                                   .distinct()
-                                                   .toList();
+        // Sự kiện click outside để ẩn suggestions
+        scene.addEventFilter(MouseEvent.MOUSE_CLICKED, e -> {
+            if (suggestionsVisible && suggestionsPopup != null && suggestionsPopup.isShowing()) {
+                if (cityInput != null && !cityInput.getBoundsInParent().contains(
+                    cityInput.sceneToLocal(e.getSceneX(), e.getSceneY()))) {
                     
-                    System.out.println("Parsed favorites: " + favorites);
-                    
-                    weatherUI.updateFavoritesList(favorites, e -> {
-                        Button btn = (Button) e.getSource();
-                        String cityKey = (String) btn.getUserData();
-                        String[] parts = cityKey.split(",");
-                        if (parts.length >= 2) {
-                            txtCity.setText(parts[0].trim());
-                            performSearch();
-                        }
-                    }, e2 -> {
-                        // delete handler: send DEL_FAV for the clicked favorite
-                        Button delBtn = (Button) e2.getSource();
-                        String cityKey = (String) delBtn.getUserData();
-                        if (cityKey != null && !cityKey.trim().isEmpty()) {
-                            System.out.println("Removing favorite: " + cityKey);
-                            removeFavorite(cityKey);
+                    PauseTransition delay = new PauseTransition(Duration.millis(100));
+                    delay.setOnFinished(evt -> {
+                        if (suggestionsPopup.isShowing()) {
+                            hideSuggestionsPopup();
                         }
                     });
-                    
-                    // Update favorite toggle state for current city if present
-                    updateFavoriteButtonState(favorites);
-                } else {
-                    System.out.println("Empty favorites response, clearing list");
-                    weatherUI.updateFavoritesList(new ArrayList<>(), null, null);
-                    // ensure toggle is cleared
-                    try { 
-                        ToggleButton fav = weatherUI.getFavoriteButton(); 
-                        if (fav != null) {
-                            fav.setSelected(false);
-                            fav.getStyleClass().remove("favorite-active");
-                        }
-                    } catch (Exception ignore) {}
+                    delay.play();
                 }
-            });
+            }
         });
     }
 
-    /**
-     * Update favorite button state based on current city
-     */
-    private void updateFavoriteButtonState(List<String> favorites) {
-        try {
-            ToggleButton fav = weatherUI.getFavoriteButton();
-            if (fav != null && currentCityKey != null) {
-                boolean isFav = favorites.contains(currentCityKey);
-                System.out.println("Current city: " + currentCityKey + ", is favorite: " + isFav);
-                fav.setSelected(isFav);
-                if (isFav) {
-                    if (!fav.getStyleClass().contains("favorite-active")) {
-                        fav.getStyleClass().add("favorite-active");
-                    }
-                } else {
-                    fav.getStyleClass().remove("favorite-active");
-                }
-            }
-        } catch (Exception ex) {
-            System.err.println("Error updating favorite button state: " + ex.getMessage());
-            ex.printStackTrace();
-        }
-    }
+    private VBox createHeader() {
+        VBox header = new VBox(18);
+        header.setPadding(new Insets(30, 35, 25, 35));
+        header.setAlignment(Pos.CENTER);
+        header.setStyle("-fx-background-color: linear-gradient(from 0% 0% to 100% 100%, #667eea 0%, #764ba2 100%);");
 
-    /**
-     * Setup favorite button handler (safe to call multiple times)
-     */
-    private void setupFavoriteButton() {
-        ToggleButton fav = weatherUI.getFavoriteButton();
-        if (fav != null) {
-            // Remove old handler if exists and add new one
-            fav.setOnAction(null);
-            fav.setOnAction(e -> {
-                if (currentCityKey == null) {
-                    setStatus("❌ Không có thành phố nào được chọn");
-                    fav.setSelected(false);
-                    return;
-                }
-                
-                if (fav.isSelected()) {
-                    addFavorite(currentCityKey);
-                    if (!fav.getStyleClass().contains("favorite-active")) {
-                        fav.getStyleClass().add("favorite-active");
-                    }
-                    setStatus("❤ Đang thêm vào yêu thích...");
-                } else {
-                    removeFavorite(currentCityKey);
-                    fav.getStyleClass().remove("favorite-active");
-                    setStatus("♡ Đang xóa khỏi yêu thích...");
-                }
-            });
-        }
-    }
+        HBox titleBox = new HBox(20);
+        titleBox.setAlignment(Pos.CENTER);
 
-    
-    /**
-     * Tạo layout 3 cột - returns StackPane with animated background
-     */
-    private StackPane createThreeColumnLayout() {
-        // Initialize WeatherUI's animated background layer
-        weatherUI.ensureInit(); // Ensure labels exist before composing sections
-        
-        // Create our main BorderPane
-        BorderPane root = new BorderPane();
-        root.setPadding(new Insets(12, 16, 12, 16));
-        
-        // Get WeatherUI's animated background (this will create rootPane + animationLayer if needed)
-        StackPane animatedBg = weatherUI.getRootPane();
-        animatedBg.setMouseTransparent(true); // Don't block mouse events
-        
-        // Use a StackPane to layer: animated background at bottom, content on top
-        StackPane layeredRoot = new StackPane();
-        layeredRoot.getChildren().addAll(animatedBg, root);
+        titleLabel = new Label("🌤 DỰ BÁO THỜI TIẾT");
+        titleLabel.setFont(Font.font("Arial", FontWeight.BOLD, 32));
+        titleLabel.setTextFill(Color.WHITE);
+        titleLabel.setStyle("-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.3), 5, 0, 0, 2);");
 
-        // Top: header (title + clock)
-        VBox topContainer = new VBox(8);
-        topContainer.setAlignment(Pos.TOP_CENTER);
-        topContainer.getChildren().addAll(createHeaderWithClock());
+        Button langBtn = new Button("EN");
+        langBtn.setFont(Font.font("Arial", FontWeight.BOLD, 12));
+        langBtn.getStyleClass().add("lang-button");
+        langBtn.setOnAction(e -> {
+            isVietnamese = !isVietnamese;
+            langBtn.setText(isVietnamese ? "EN" : "VI");
+            updateLanguage();
+            hideSuggestionsPopup();
+        });
 
-        // Center: HBox with 3 columns (25% - 50% - 25%)
-        HBox mainContent = new HBox(12);
-        mainContent.setPadding(new Insets(10, 0, 10, 0));
-        mainContent.setAlignment(Pos.TOP_CENTER);
+        Button tempUnitBtn = new Button("°F");
+        tempUnitBtn.setFont(Font.font("Arial", FontWeight.BOLD, 12));
+        tempUnitBtn.getStyleClass().add("lang-button");
+        tempUnitBtn.setOnAction(e -> {
+            isCelsius = !isCelsius;
+            tempUnitBtn.setText(isCelsius ? "°F" : "°C");
+            loadAllWeatherData();
+            hideSuggestionsPopup();
+        });
 
-        // ========== LEFT COLUMN (25%): Navigation & Search ==========
-        VBox leftCol = new VBox(16);
-        leftCol.setPadding(new Insets(8));
-        leftCol.setAlignment(Pos.TOP_CENTER);
-        leftCol.setMinWidth(280);
-        leftCol.setMaxWidth(350);
-        HBox.setHgrow(leftCol, Priority.NEVER);
+        Button favoritesListBtn = new Button("⭐ " + (isVietnamese ? "Yêu thích" : "Favorites"));
+        favoritesListBtn.setFont(Font.font("Arial", FontWeight.BOLD, 12));
+        favoritesListBtn.getStyleClass().add("lang-button");
+        favoritesListBtn.setOnAction(e -> {
+            showFavoritesList();
+            hideSuggestionsPopup();
+        });
 
-        // Ensure WeatherUI core fields exist (labels/boxes) before composing sections
-        weatherUI.ensureInit();
+        titleBox.getChildren().addAll(titleLabel, langBtn, tempUnitBtn, favoritesListBtn);
 
-        // Search box from client (it wires buttons and textfield)
-        HBox searchBox = createSearchBox();
-        // Favorites section (lịch sử tìm kiếm)
-        VBox favoritesSection = weatherUI.createFavoritesSection();
-        
-    // Apply CSS classes for nicer card visuals
-    searchBox.getStyleClass().add("card");
-    favoritesSection.getStyleClass().add("card");
+        VBox searchContainer = new VBox(0);
+        searchContainer.setAlignment(Pos.CENTER);
+        searchContainer.setMaxWidth(500);
 
-    VBox mapCard = createMapCard();
-    mapCard.getStyleClass().add("card");
+        HBox searchWrapper = new HBox();
+        searchWrapper.setAlignment(Pos.CENTER);
+        searchWrapper.setMaxWidth(500);
 
-    // show search, location card, map entry, then favorites
-    leftCol.getChildren().addAll(searchBox, createLocationCard(), mapCard, favoritesSection);
-
-    // ========== MIDDLE COLUMN (50%): Main Weather Card + Hourly Forecast ==========
-    VBox middleCol = new VBox(20);
-    middleCol.setAlignment(Pos.TOP_CENTER);
-    // Hero (main weather summary)
-    VBox hero = weatherUI.createHeroSection();
-    // Main details grid (humidity, wind, pressure, visibility) - wrap so we can apply card styling
-    javafx.scene.Node basicsNode = weatherUI.createMainDetailsGrid();
-    VBox basicsWrap = new VBox(basicsNode);
-    basicsWrap.setAlignment(Pos.CENTER);
-    basicsWrap.setPadding(new Insets(8));
-
-    // Hourly forecast section (horizontal scroll)
-    VBox hourly = weatherUI.createHourlyForecastSection();
-
-    // Apply CSS classes
-    hero.getStyleClass().add("card");
-    basicsWrap.getStyleClass().add("card");
-    hourly.getStyleClass().add("card");
-    // Add hero, basics and hourly sections (map removed)
-    middleCol.getChildren().addAll(hero, basicsWrap, hourly);
-
-        // ========== RIGHT COLUMN (25%): 5-Day Forecast + Extended Info ==========
-        VBox rightCol = new VBox(18);
-        rightCol.setPadding(new Insets(8));
-        rightCol.setAlignment(Pos.TOP_CENTER);
-        rightCol.setMinWidth(280);
-        rightCol.setMaxWidth(350);
-        HBox.setHgrow(rightCol, Priority.NEVER);
-    // Gemini alert removed
-        // Daily 5-day forecast section
-        VBox daily = weatherUI.createDailyForecastSection();
-        // Detailed weather grid (extended information)
-        GridPane detailsGrid = weatherUI.createWeatherDetailsGrid();
-
-    // Apply CSS classes
-    daily.getStyleClass().add("card");
-    detailsGrid.getStyleClass().add("card");
-    // Put the daily forecast in the right column, but move the details grid to the middle column
-    rightCol.getChildren().addAll(daily);
-    // Place detailsGrid into the middle column so it's centered with main weather card
-    detailsGrid.setMaxWidth(760);
-    middleCol.getChildren().add(detailsGrid);
-
-        // Add all 3 columns to main content
-        mainContent.getChildren().addAll(leftCol, middleCol, rightCol);
-
-        // Single ScrollPane for entire content
-        ScrollPane mainScroll = new ScrollPane(mainContent);
-        mainScroll.setFitToWidth(true);
-        mainScroll.setFitToHeight(true);
-        mainScroll.setStyle("-fx-background: transparent; -fx-background-color: transparent;");
-        mainScroll.getStyleClass().add("main-scroll");
-
-        // Bottom: status bar
-        HBox status = createStatusBar();
-        status.getStyleClass().add("status-bar");
-
-        root.setTop(topContainer);
-        root.setCenter(mainScroll);
-        root.setBottom(status);
-        
-        // Return the layered root with animated background
-        return layeredRoot;
-    }
-
-    private HBox createStatusBar() {
-        if (statusLabel == null) {
-            statusLabel = new Label("Ready");
-            statusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.85); -fx-font-size: 12px;");
-        }
-
-        Label connection = new Label("●");
-        connection.setStyle("-fx-text-fill: #4cd137; -fx-font-size: 14px;");
-
-        HBox statusBox = new HBox(10);
-        statusBox.setAlignment(Pos.CENTER_LEFT);
-        statusBox.setPadding(new Insets(8, 12, 8, 12));
-        statusBox.getChildren().addAll(connection, statusLabel);
-        statusBox.setStyle("-fx-background-color: rgba(0,0,0,0.15); -fx-background-radius: 6;");
-        return statusBox;
-    }
-
-    // Old duplicate methods - remove these
-    /*
-    private VBox createLeftColumn() {
-        VBox leftColumn = new VBox(20);
-        leftColumn.setAlignment(Pos.TOP_CENTER);
-        leftColumn.setPadding(new Insets(20, 25, 20, 25));
-        leftColumn.setStyle("-fx-background-color: rgba(255,255,255,0.08);");
-        
-        // Search Box
-        VBox searchSection = createSearchSection();
-        
-        // Current Weather Card
-        VBox currentWeatherCard = weatherUI.createCurrentWeatherCard();
-        
-        leftColumn.getChildren().addAll(searchSection, currentWeatherCard);
-        return leftColumn;
-    }
-    
-    private ScrollPane createRightColumn() {
-        VBox rightColumn = new VBox(25);
-        rightColumn.setAlignment(Pos.TOP_CENTER);
-        rightColumn.setPadding(new Insets(20, 25, 20, 25));
-        rightColumn.setStyle("-fx-background-color: transparent;");
-        
-        // Hourly Forecast
-        VBox hourlySection = weatherUI.createHourlyForecastSection();
-        
-        // Daily Forecast
-        VBox dailySection = weatherUI.createDailyForecastSection();
-        
-        // Weather Details Grid
-        GridPane detailsGrid = weatherUI.createWeatherDetailsGrid();
-        
-        rightColumn.getChildren().addAll(hourlySection, dailySection, detailsGrid);
-        
-        ScrollPane scroller = new ScrollPane(rightColumn);
-        scroller.setFitToWidth(true);
-        scroller.setStyle("-fx-background: transparent; -fx-background-color: transparent;");
-        scroller.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
-        scroller.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-        
-        return scroller;
-    }
-    
-    private VBox createSearchSection() {
-        VBox searchSection = new VBox(15);
-        searchSection.setAlignment(Pos.CENTER);
-        searchSection.setPadding(new Insets(10, 0, 10, 0));
-        
-        HBox searchBox = createSearchBox();
-        searchSection.getChildren().add(searchBox);
-        return searchSection;
-    }
-    */
-    
-    private VBox createHeaderWithClock() {
-        // Reuse the header constructed by WeatherUI (which has a proper vector icon)
-        VBox header = weatherUI.createHeader();
-        header.setPadding(new Insets(15, 0, 15, 0));
-        header.setStyle("-fx-background-color: rgba(0,0,0,0.2);");
-
-        // Build small vector clock graphic and label, then append to the header
-        clockGraphicPane = buildClockGraphic();
-        currentTimeLabel = new Label("");
-        currentTimeLabel.setStyle(
-            "-fx-font-family: 'Segoe UI', 'Arial';" +
-            "-fx-font-size: 16px;" +
-            "-fx-font-weight: 600;" +
-            "-fx-text-fill: rgba(255,255,255,0.95);" +
-            "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.28), 8, 0, 0, 2);"
+        HBox searchFieldContainer = new HBox();
+        searchFieldContainer.setAlignment(Pos.CENTER_LEFT);
+        searchFieldContainer.setStyle(
+            "-fx-background-color: rgba(255, 255, 255, 0.95);" +
+            "-fx-background-radius: 25;" +
+            "-fx-padding: 5 20 5 20;" +
+            "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 10, 0, 0, 3);"
         );
+        searchFieldContainer.setMaxWidth(500);
+        searchFieldContainer.setPrefHeight(50);
 
-        HBox clockBox = new HBox(10);
-        clockBox.setAlignment(Pos.CENTER);
-        clockBox.getChildren().addAll(clockGraphicPane, currentTimeLabel);
+        Label searchIcon = new Label("🔍");
+        searchIcon.setFont(Font.font(16));
+        searchIcon.setTextFill(Color.web("#667eea"));
+        searchIcon.setPadding(new Insets(0, 10, 0, 0));
 
-        header.getChildren().add(clockBox);
+        cityInput = new TextField();
+        cityInput.setPromptText(isVietnamese ? "Tìm kiếm thành phố..." : "Search for cities...");
+        cityInput.setStyle(
+            "-fx-background-color: transparent;" +
+            "-fx-border-width: 0;" +
+            "-fx-font-size: 15;" +
+            "-fx-text-fill: #2c3e50;" +
+            "-fx-prompt-text-fill: #95a5a6;" +
+            "-fx-padding: 0;"
+        );
+        cityInput.setPrefHeight(40);
+        cityInput.setPrefWidth(400);
+        HBox.setHgrow(cityInput, Priority.ALWAYS);
+
+        Button clearBtn = new Button("✕");
+        clearBtn.setFont(Font.font(12));
+        clearBtn.setStyle(
+            "-fx-background-color: transparent;" +
+            "-fx-text-fill: #95a5a6;" +
+            "-fx-cursor: hand;" +
+            "-fx-padding: 5;"
+        );
+        clearBtn.setVisible(false);
+
+        clearBtn.setOnAction(e -> {
+            cityInput.clear();
+            hideSuggestionsPopup();
+            cityInput.requestFocus();
+        });
+
+        cityInput.textProperty().addListener((observable, oldValue, newValue) -> {
+            clearBtn.setVisible(!newValue.isEmpty());
+            
+            if (newValue.length() >= 2) {
+                searchCitiesInHeader(newValue, searchFieldContainer);
+            } else {
+                hideSuggestionsPopup();
+            }
+        });
+
+        cityInput.focusedProperty().addListener((observable, oldValue, newValue) -> {
+            if (!newValue) {
+                PauseTransition pause = new PauseTransition(Duration.millis(200));
+                pause.setOnFinished(e -> hideSuggestionsPopup());
+                pause.play();
+            } else if (cityInput.getText().length() >= 2) {
+                PauseTransition pause = new PauseTransition(Duration.millis(100));
+                pause.setOnFinished(e -> {
+                    if (cityInput.isFocused() && cityInput.getText().length() >= 2) {
+                        searchCitiesInHeader(cityInput.getText(), searchFieldContainer);
+                    }
+                });
+                pause.play();
+            }
+        });
+
+        cityInput.setOnAction(e -> {
+            if (!searchResults.isEmpty()) {
+                String[] firstResult = searchResults.get(0);
+                String displayText = firstResult[0];
+                if (firstResult.length > 2 && !firstResult[2].isEmpty()) {
+                    displayText += ", " + firstResult[2];
+                }
+                cityInput.setText(displayText);
+                hideSuggestionsPopup();
+            }
+            searchWeather();
+        });
+
+        searchFieldContainer.getChildren().addAll(searchIcon, cityInput, clearBtn);
+        searchWrapper.getChildren().add(searchFieldContainer);
+        searchContainer.getChildren().add(searchWrapper);
+
+        header.getChildren().addAll(titleBox, searchContainer);
+        
+        initSuggestionsPopup();
+        
         return header;
     }
 
-    // Các phương thức còn lại giữ nguyên (buildClockGraphic, startClock, updateClock, createSearchBox, performGeoSearch, etc.)
-    // ... [giữ nguyên tất cả các phương thức khác từ code gốc] ...
+    private void initSuggestionsPopup() {
+        suggestionsPopup = new Popup();
+        suggestionsPopup.setAutoHide(true);
+        
+        suggestionsBox = new VBox();
+        suggestionsBox.setStyle(
+            "-fx-background-color: white;" +
+            "-fx-background-radius: 15;" +
+            "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.2), 15, 0, 0, 5);" +
+            "-fx-border-color: #e0e0e0;" +
+            "-fx-border-width: 1;" +
+            "-fx-border-radius: 15;" +
+            "-fx-padding: 10 0;"
+        );
+        suggestionsBox.setMaxWidth(500);
+        suggestionsBox.setPrefWidth(500);
+        
+        ScrollPane scrollPane = new ScrollPane(suggestionsBox);
+        scrollPane.setStyle(
+            "-fx-background: white;" +
+            "-fx-background-color: white;" +
+            "-fx-border-width: 0;" +
+            "-fx-background-radius: 15;"
+        );
+        scrollPane.setFitToWidth(true);
+        scrollPane.setMaxHeight(300);
+        scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        
+        suggestionsPopup.getContent().add(scrollPane);
+    }
 
-    private HBox createSearchBox() {
-        HBox searchBox = new HBox(12);
-        searchBox.setAlignment(Pos.CENTER);
-        searchBox.setPadding(new Insets(15, 20, 15, 20));
-        searchBox.getStyleClass().add("search-box");
+    private void searchCitiesInHeader(String query, HBox searchFieldContainer) {
+        new Thread(() -> {
+            synchronized (socketLock) {
+                try {
+                    if (bw == null) return;
+                    
+                    String request = "SEARCH|" + query;
+                    bw.write(request);
+                    bw.newLine();
+                    bw.flush();
 
-        // ----- TextField -----
-        txtCity = new TextField();
-        txtCity.setPromptText("Nhập tên thành phố... (VD: Hanoi, Tokyo, Paris)");
-        txtCity.setPrefWidth(280);
-        txtCity.setPrefHeight(42);
-        txtCity.getStyleClass().add("search-textfield");
+                    String response = br.readLine();
+                    Platform.runLater(() -> handleSearchResponse(response, searchFieldContainer));
+                } catch (IOException e) {
+                    Platform.runLater(() -> hideSuggestionsPopup());
+                }
+            }
+        }).start();
+    }
 
-        // Khi focus thay đổi: thêm/xóa class "focused"
-        txtCity.focusedProperty().addListener((obs, was, now) -> {
-            if (now) txtCity.getStyleClass().add("focused");
-            else txtCity.getStyleClass().remove("focused");
+    private void handleSearchResponse(String response, HBox searchFieldContainer) {
+        searchResults.clear();
+        
+        if (response == null || response.startsWith("ERROR")) {
+            hideSuggestionsPopup();
+            return;
+        }
+
+        String[] parts = response.split("\\|");
+        if (parts.length < 2 || !parts[0].equals("SEARCH")) {
+            hideSuggestionsPopup();
+            return;
+        }
+
+        for (int i = 1; i < parts.length; i++) {
+            String[] cityData = parts[i].split(",");
+            if (cityData.length >= 3) {
+                searchResults.add(cityData);
+            }
+        }
+
+        if (searchResults.isEmpty()) {
+            hideSuggestionsPopup();
+        } else {
+            showSuggestionsPopup(searchFieldContainer);
+        }
+    }
+
+    private void showSuggestionsPopup(HBox searchFieldContainer) {
+        if (searchResults.isEmpty()) return;
+
+        suggestionsBox.getChildren().clear();
+        
+        for (String[] cityData : searchResults) {
+            String name = cityData[0];
+            String region = cityData.length > 1 ? cityData[1] : "";
+            String country = cityData.length > 2 ? cityData[2] : "";
+            
+            HBox item = createSuggestionItem(name, region, country);
+            suggestionsBox.getChildren().add(item);
+        }
+
+        try {
+            Bounds bounds = searchFieldContainer.localToScreen(searchFieldContainer.getBoundsInLocal());
+            
+            if (bounds != null) {
+                suggestionsPopup.setX(bounds.getMinX());
+                suggestionsPopup.setY(bounds.getMaxY() + 5);
+
+                if (!suggestionsPopup.isShowing()) {
+                    suggestionsPopup.show(searchFieldContainer.getScene().getWindow());
+                }
+                
+                suggestionsVisible = true;
+            }
+        } catch (Exception e) {
+            System.out.println("Cannot show suggestions popup: " + e.getMessage());
+        }
+    }
+
+    private void hideSuggestionsPopup() {
+        if (suggestionsPopup != null && suggestionsPopup.isShowing()) {
+            suggestionsPopup.hide();
+        }
+        suggestionsVisible = false;
+        searchResults.clear();
+    }
+
+    private HBox createSuggestionItem(String name, String region, String country) {
+        HBox item = new HBox(15);
+        item.setAlignment(Pos.CENTER_LEFT);
+        item.setPadding(new Insets(12, 20, 12, 20));
+        item.setStyle(
+            "-fx-background-color: transparent;" +
+            "-fx-cursor: hand;" +
+            "-fx-border-color: transparent transparent #f0f0f0 transparent;" +
+            "-fx-border-width: 0 0 1 0;"
+        );
+
+        Label locationIcon = new Label("📍");
+        locationIcon.setFont(Font.font(14));
+        locationIcon.setTextFill(Color.web("#667eea"));
+
+        VBox textBox = new VBox(3);
+        
+        Label nameLabel = new Label(name);
+        nameLabel.setFont(Font.font("Arial", FontWeight.BOLD, 14));
+        nameLabel.setTextFill(Color.web("#2c3e50"));
+
+        String subtitle = "";
+        if (!region.isEmpty()) subtitle += region;
+        if (!country.isEmpty()) {
+            if (!subtitle.isEmpty()) subtitle += ", ";
+            subtitle += country;
+        }
+        
+        if (!subtitle.isEmpty()) {
+            Label subtitleLabel = new Label(subtitle);
+            subtitleLabel.setFont(Font.font("Arial", 12));
+            subtitleLabel.setTextFill(Color.web("#7f8c8d"));
+            textBox.getChildren().addAll(nameLabel, subtitleLabel);
+        } else {
+            textBox.getChildren().add(nameLabel);
+        }
+
+        HBox.setHgrow(textBox, Priority.ALWAYS);
+
+        item.getChildren().addAll(locationIcon, textBox);
+
+        item.setOnMouseEntered(e -> {
+            item.setStyle(
+                "-fx-background-color: #f8f9fa;" +
+                "-fx-cursor: hand;" +
+                "-fx-border-color: transparent transparent #e0e0e0 transparent;"
+            );
         });
 
-    // ----- Nút tìm kiếm -----
-    btnSearch = new Button();
-    // compact yellow circular button with magnifier icon
-    btnSearch.setGraphic(createMagnifierIcon(Color.WHITE, 18, 2.2));
-    btnSearch.setPrefSize(48, 48);
-    btnSearch.setMinSize(48, 48);
-    btnSearch.setStyle("-fx-background-radius: 28; -fx-cursor: hand; -fx-border-color: transparent;");
-    btnSearch.setBackground(new Background(new BackgroundFill(Color.web("#FFCC33"), new CornerRadii(28), null)));
-    btnSearch.setEffect(new DropShadow(6, Color.rgb(0,0,0,0.18)));
-    btnSearch.setOnAction(e -> performSearch());
-        txtCity.setOnAction(e -> performSearch());
+        item.setOnMouseExited(e -> {
+            item.setStyle(
+                "-fx-background-color: transparent;" +
+                "-fx-cursor: hand;" +
+                "-fx-border-color: transparent transparent #f0f0f0 transparent;"
+            );
+        });
 
-        // location button will be part of the dedicated location card
-        searchBox.getChildren().addAll(txtCity, btnSearch);
-        java.net.URL sbCss = getClass().getResource("styles/searchbox.css");
-        if (sbCss != null) {
-            searchBox.getStylesheets().add(sbCss.toExternalForm());
-        }
-        return searchBox;
-    }
-
-    /**
-     * Create a small card that shows current location and a small location button.
-     */
-    private VBox createLocationCard() {
-        // ensure btnMyLocation exists and is wired
-        if (btnMyLocation == null) {
-            btnMyLocation = new Button();
-        }
-    // small square icon button with location-pin icon on the right of the location card
-    btnMyLocation.setGraphic(createLocationPinIcon(Color.web("#111827"), 14));
-    btnMyLocation.setPrefSize(40, 40);
-    btnMyLocation.setMinSize(40,40);
-    btnMyLocation.setTooltip(new Tooltip("Vị trí hiện tại"));
-    btnMyLocation.setStyle("-fx-background-color: white; -fx-background-radius: 10; -fx-border-color: rgba(0,0,0,0.06); -fx-border-radius: 10; -fx-cursor: hand;");
-    btnMyLocation.setEffect(new DropShadow(6, Color.rgb(0,0,0,0.10)));
-    btnMyLocation.setOnAction(e -> performGeoSearch());
-
-        VBox card = new VBox(6);
-        card.setAlignment(Pos.TOP_LEFT);
-        card.setPadding(new Insets(12, 14, 12, 14));
-        card.setMinWidth(220);
-        card.setMaxWidth(Double.MAX_VALUE);
-        // translucent card style to match other UI cards
-        card.setStyle(
-            "-fx-background-color: rgba(255,255,255,0.12);" +
-            "-fx-background-radius: 12;" +
-            "-fx-border-color: rgba(255,255,255,0.22);" +
-            "-fx-border-radius: 12;" +
-            "-fx-border-width: 1.2;" +
-            "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.18), 8, 0, 0, 4);"
-        );
-
-        HBox header = new HBox();
-        header.setAlignment(Pos.TOP_RIGHT);
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-
-    Label title = new Label("Vị trí hiện tại");
-    title.setStyle("-fx-font-size: 13px; -fx-font-weight: 600; -fx-text-fill: rgba(255,255,255,0.95);");
-
-        header.getChildren().addAll(title, spacer, btnMyLocation);
-
-        if (locationLine1 == null) {
-            locationLine1 = new Label("--");
-            locationLine1.setStyle("-fx-font-size: 12px; -fx-font-weight: 600; -fx-text-fill: rgba(255,255,255,0.95);");
-        }
-        if (locationLine2 == null) {
-            locationLine2 = new Label("Tự động phát hiện");
-            locationLine2.setStyle("-fx-font-size: 11px; -fx-text-fill: rgba(255,255,255,0.72);");
-        }
-
-        card.getChildren().addAll(header, locationLine1, locationLine2);
-        return card;
-    }
-    private Node createMapSvgIcon(double size, Color strokeColor, Color fillColor) {
-        Group g = new Group();
-
-        double s = size;
-
-        // === Map shape (folded map) ===
-        Path mapShape = new Path();
-        mapShape.setStroke(strokeColor);
-        mapShape.setFill(fillColor);
-        mapShape.setStrokeWidth(1.8);
-
-        mapShape.getElements().addAll(
-            new MoveTo(0, s * 0.6),
-            new LineTo(s * 0.28, s * 0.10),
-            new LineTo(s * 0.62, s * 0.30),
-            new LineTo(s * 1.0, s * 0.05),
-            new LineTo(s * 1.0, s * 0.75),
-            new LineTo(s * 0.62, s * 0.95),
-            new LineTo(s * 0.28, s * 0.70),
-            new LineTo(0, s * 0.90),
-            new ClosePath()
-        );
-
-        // === Location Pin (circle + triangle tail) ===
-        double r = size * 0.18;
-        Circle pinHead = new Circle(s * 0.62, s * 0.50, r);
-        pinHead.setFill(strokeColor);
-
-        Polygon pinTail = new Polygon(
-            s * 0.62, s * 0.50 + r * 1.6,
-            s * 0.62 - r * 0.6, s * 0.50 + r * 0.2,
-            s * 0.62 + r * 0.6, s * 0.50 + r * 0.2
-        );
-        pinTail.setFill(strokeColor);
-
-        g.getChildren().addAll(mapShape, pinHead, pinTail);
-
-        StackPane wrap = new StackPane(g);
-        wrap.setPrefSize(size + 6, size + 6);
-
-        return wrap;
-    }
-
-
-    private VBox createMapCard() {
-        VBox card = new VBox(10);
-        card.setAlignment(Pos.CENTER);
-        card.setPadding(new Insets(16, 14, 16, 14));
-        card.setMinWidth(220);
-        card.setMaxWidth(Double.MAX_VALUE);
-        card.setStyle(
-            "-fx-background-color: rgba(14,165,233,0.18);" +
-            "-fx-background-radius: 12;" +
-            "-fx-border-color: rgba(14,165,233,0.4);" +
-            "-fx-border-radius: 12;" +
-            "-fx-border-width: 1.5;"
-        );
-
-        // --- SVG icon map ---
-        Node svgIcon = createMapSvgIcon(32, Color.WHITE, Color.TRANSPARENT);
-
-        Label title = new Label("Weather Map");
-        title.setStyle("-fx-font-size: 16px; -fx-font-weight: 700; -fx-text-fill: white;");
-
-        Label desc = new Label("Khám phá bản đồ radar thời tiết");
-        desc.setStyle("-fx-text-fill: rgba(255,255,255,0.85); -fx-text-alignment: center;");
-        desc.setWrapText(true);
-
-        Button openBtn = new Button("Mở Bản Đồ");
-        openBtn.setPrefWidth(180);
-        openBtn.setGraphic(svgIcon);
-        openBtn.setOnAction(e -> openWeatherMap());
-
-        // 👉 Only 1 button now (web button removed)
-        card.getChildren().addAll(title, desc, openBtn);
-        return card;
-    }
-
-
-    private void openWeatherMap() {
-        try {
-            if (mapWindow == null) {
-                mapWindow = new WeatherMapWindow();
+        item.setOnMouseClicked(e -> {
+            String displayText = name;
+            if (!country.isEmpty()) {
+                displayText += ", " + country;
             }
-            mapWindow.show();
-            setStatus("🗺️ Đã mở Weather Map");
-        } catch (Exception ex) {
-            showMapErrorDialog("Không thể mở Weather Map: " + ex.getMessage());
-        }
+            cityInput.setText(displayText);
+            hideSuggestionsPopup();
+            searchWeather();
+        });
+
+        return item;
     }
-    
-    private void openWeatherMapWeb() {
+
+    private VBox createCombinedWeatherSection() {
+        VBox section = new VBox(25);
+        section.setAlignment(Pos.TOP_CENTER);
+        section.setPadding(new Insets(30));
+        section.getStyleClass().add("weather-card");
+        section.setMaxWidth(950);
+        // ĐÃ GIẢM OPACITY - MỜ HƠN
+        section.setStyle(
+            "-fx-background-color: rgba(255, 255, 255, 0.65);" +
+            "-fx-background-radius: 20;" +
+            "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 10, 0, 0, 3);"
+        );
+
+        HBox headerBox = new HBox(15);
+        headerBox.setAlignment(Pos.CENTER);
+
+        currentWeatherTitle = new Label(isVietnamese ? "THỜI TIẾT HIỆN TẠI" : "CURRENT WEATHER");
+        currentWeatherTitle.setFont(Font.font("Arial", FontWeight.BOLD, 22));
+        currentWeatherTitle.setTextFill(Color.web("#0f3460"));
+
+        HBox.setHgrow(currentWeatherTitle, Priority.ALWAYS);
+
+        favoriteBtn = new Button("☆");
+        favoriteBtn.setFont(Font.font("Arial", 24));
+        favoriteBtn.setStyle(
+            "-fx-background-color: transparent;" +
+            "-fx-text-fill: #ffd700;" +
+            "-fx-cursor: hand;" +
+            "-fx-padding: 5 15;"
+        );
+        favoriteBtn.setOnAction(e -> toggleFavorite());
+
+        headerBox.getChildren().addAll(currentWeatherTitle, favoriteBtn);
+
+        currentWeatherBox = new VBox(15);
+        currentWeatherBox.setAlignment(Pos.CENTER);
+        weatherIcon = new ImageView();
+        weatherIcon.setFitWidth(110);
+        weatherIcon.setFitHeight(110);
+        cityNameLabel = new Label();
+        cityNameLabel.setFont(Font.font("Arial", FontWeight.BOLD, 28));
+        cityNameLabel.setTextFill(Color.web("#0f3460"));
+        temperatureLabel = new Label();
+        temperatureLabel.setFont(Font.font("Arial", FontWeight.BOLD, 62));
+        temperatureLabel.setTextFill(Color.web("#e94560"));
+        feelsLikeLabel = new Label();
+        feelsLikeLabel.setFont(Font.font("Arial", 14));
+        feelsLikeLabel.setTextFill(Color.web("#6c757d"));
+        conditionLabel = new Label();
+        conditionLabel.setFont(Font.font("Arial", FontWeight.BOLD, 19));
+        conditionLabel.setTextFill(Color.web("#16213e"));
+        
+        GridPane detailsGrid = new GridPane();
+        detailsGrid.setHgap(40);
+        detailsGrid.setVgap(15);
+        detailsGrid.setAlignment(Pos.CENTER);
+        detailsGrid.setPadding(new Insets(18, 0, 0, 0));
+        humidityLabel = new Label();
+        humidityLabel.setFont(Font.font("Arial", FontWeight.SEMI_BOLD, 16));
+        humidityLabel.setTextFill(Color.web("#495057"));
+        windLabel = new Label();
+        windLabel.setFont(Font.font("Arial", FontWeight.SEMI_BOLD, 16));
+        windLabel.setTextFill(Color.web("#495057"));
+        cloudLabel = new Label();
+        cloudLabel.setFont(Font.font("Arial", FontWeight.SEMI_BOLD, 16));
+        cloudLabel.setTextFill(Color.web("#495057"));
+        uvLabel = new Label();
+        uvLabel.setFont(Font.font("Arial", FontWeight.SEMI_BOLD, 16));
+        uvLabel.setTextFill(Color.web("#495057"));
+        detailsGrid.add(humidityLabel, 0, 0);
+        detailsGrid.add(windLabel, 1, 0);
+        detailsGrid.add(cloudLabel, 0, 1);
+        detailsGrid.add(uvLabel, 1, 1);
+        
+        currentWeatherBox.getChildren().addAll(weatherIcon, cityNameLabel, temperatureLabel, 
+                                               feelsLikeLabel, conditionLabel, detailsGrid);
+        
+        Separator separator = new Separator();
+        separator.setMaxWidth(800);
+        separator.getStyleClass().add("separator");
+        
+        hourlyTitle = new Label(isVietnamese ? "DỰ BÁO 24 GIỜ" : "24-HOUR FORECAST");
+        hourlyTitle.setFont(Font.font("Arial", FontWeight.BOLD, 22));
+        hourlyTitle.setTextFill(Color.web("#0f3460"));
+        hourlyBox = new HBox(12);
+        hourlyBox.setAlignment(Pos.CENTER_LEFT);
+        hourlyBox.setPadding(new Insets(5));
+        
+        ScrollPane scrollPane = new ScrollPane(hourlyBox);
+        scrollPane.setFitToHeight(true);
+        scrollPane.setStyle("-fx-background-color: transparent; -fx-background: transparent;");
+        scrollPane.setPrefHeight(200);
+        
+        section.getChildren().addAll(headerBox, currentWeatherBox, separator, hourlyTitle, scrollPane);
+        return section;
+    }
+
+    private VBox createForecastSection() {
+        VBox section = new VBox(18);
+        section.setAlignment(Pos.TOP_CENTER);
+        section.setPadding(new Insets(30));
+        section.getStyleClass().add("weather-card");
+        section.setMaxWidth(950);
+        // ĐÃ GIẢM OPACITY - MỜ HƠN
+        section.setStyle(
+            "-fx-background-color: rgba(255, 255, 255, 0.65);" +
+            "-fx-background-radius: 20;" +
+            "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 10, 0, 0, 3);"
+        );
+
+        forecastTitle = new Label(isVietnamese ? "DỰ BÁO 5 NGÀY" : "5-DAY FORECAST");
+        forecastTitle.setFont(Font.font("Arial", FontWeight.BOLD, 22));
+        forecastTitle.setTextFill(Color.web("#0f3460"));
+
+        forecastDaysBox = new HBox(15);
+        forecastDaysBox.setAlignment(Pos.CENTER);
+
+        section.getChildren().addAll(forecastTitle, forecastDaysBox);
+        return section;
+    }
+
+    private VBox createHourlyBox(String time, String temp, String condition, String icon) {
+        VBox box = new VBox(8);
+        box.setAlignment(Pos.CENTER);
+        box.setPadding(new Insets(15));
+        box.getStyleClass().add("hourly-card");
+        box.setPrefWidth(110);
+        box.setMinWidth(110);
+        // ĐÃ GIẢM OPACITY
+        box.setStyle(
+            "-fx-background-color: rgba(255, 255, 255, 0.7);" +
+            "-fx-background-radius: 12;" +
+            "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.08), 5, 0, 0, 2);"
+        );
+        
+        String hourStr = "N/A";
         try {
-            String htmlPath = new java.io.File("src/application/map/standalone.html").getAbsolutePath();
-            java.awt.Desktop.getDesktop().browse(new java.net.URI("file:///" + htmlPath.replace("\\", "/")));
-            setStatus("🌐 Đã mở Weather Map trong browser");
-        } catch (Exception ex) {
-            showMapErrorDialog("Không thể mở browser: " + ex.getMessage());
+            if (time != null && time.length() >= 16) {
+                hourStr = time.substring(11, 16);
+            } else if (time != null && time.length() >= 5) {
+                hourStr = time.substring(0, 5);
+            }
+        } catch (Exception e) {
+            hourStr = time;
+        }
+        
+        Label timeLabel = new Label(hourStr);
+        timeLabel.setFont(Font.font("Arial", FontWeight.BOLD, 14));
+        timeLabel.setTextFill(Color.web("#0f3460"));
+        box.getChildren().add(timeLabel);
+        
+        ImageView iconView = new ImageView();
+        try {
+            iconView.setImage(new Image("https:" + icon, true));
+            iconView.setFitWidth(45);
+            iconView.setFitHeight(45);
+            box.getChildren().add(iconView);
+        } catch (Exception e) {}
+        
+        Label tempLabel = new Label(convertTemp(temp) + getTempUnit());
+        tempLabel.setFont(Font.font("Arial", FontWeight.BOLD, 16));
+        tempLabel.setTextFill(getTemperatureColor(temp));
+        box.getChildren().add(tempLabel);
+        
+        Label condLabel = new Label(condition);
+        condLabel.setFont(Font.font("Arial", 11));
+        condLabel.setWrapText(true);
+        condLabel.setMaxWidth(100);
+        condLabel.setAlignment(Pos.CENTER);
+        condLabel.setTextFill(Color.web("#6c757d"));
+        box.getChildren().add(condLabel);
+        
+        return box;
+    }
+
+    private VBox createForecastDayBox(String date, String maxTemp, String minTemp, String condition, String icon, String rain) {
+        VBox box = new VBox(12);
+        box.setAlignment(Pos.CENTER);
+        box.setPadding(new Insets(20));
+        box.getStyleClass().add("forecast-day-card");
+        box.setPrefWidth(170);
+        // ĐÃ GIẢM OPACITY - MỜ HƠN
+        box.setStyle(
+            "-fx-background-color: rgba(255, 255, 255, 0.75);" +
+            "-fx-background-radius: 15;" +
+            "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 10, 0, 0, 3);" +
+            "-fx-cursor: hand;"
+        );
+
+        String displayDate = date;
+        final String[] dayOfWeekHolder = new String[1];
+        dayOfWeekHolder[0] = "";
+
+        try {
+            String[] dateParts = date.split("-");
+            if (dateParts.length == 3) {
+                int year = Integer.parseInt(dateParts[0]);
+                int month = Integer.parseInt(dateParts[1]);
+                int day = Integer.parseInt(dateParts[2]);
+                
+                java.time.LocalDate localDate = java.time.LocalDate.of(year, month, day);
+                if (isVietnamese) {
+                    dayOfWeekHolder[0] = switch(localDate.getDayOfWeek()) {
+                        case MONDAY -> "Thứ 2";
+                        case TUESDAY -> "Thứ 3";
+                        case WEDNESDAY -> "Thứ 4";
+                        case THURSDAY -> "Thứ 5";
+                        case FRIDAY -> "Thứ 6";
+                        case SATURDAY -> "Thứ 7";
+                        case SUNDAY -> "CN";
+                    };
+                    displayDate = String.format("%02d/%02d", day, month);
+                } else {
+                    dayOfWeekHolder[0] = localDate.getDayOfWeek().toString().substring(0, 3);
+                    displayDate = String.format("%02d/%02d", month, day);
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("DEBUG: Error parsing date: " + date);
+        }
+
+        Label dayLabel = new Label(dayOfWeekHolder[0]);
+        dayLabel.setFont(Font.font("Arial", FontWeight.BOLD, 14));
+        dayLabel.setTextFill(Color.web("#667eea"));
+            
+        Label dateLabel = new Label(displayDate);
+        dateLabel.setFont(Font.font("Arial", FontWeight.SEMI_BOLD, 15));
+        dateLabel.setTextFill(Color.web("#16213e"));
+
+        ImageView iconView = new ImageView();
+        try {
+            iconView.setImage(new Image("https:" + icon, true));
+            iconView.setFitWidth(60);
+            iconView.setFitHeight(60);
+        } catch (Exception e) {
+            System.out.println("DEBUG: Error loading icon: " + icon);
+        }
+
+        HBox tempBox = new HBox(8);
+        tempBox.setAlignment(Pos.CENTER);
+
+        Label maxTempLabel = new Label(convertTemp(maxTemp) + getTempUnit());
+        maxTempLabel.setFont(Font.font("Arial", FontWeight.BOLD, 20));
+        maxTempLabel.setTextFill(getTemperatureColor(maxTemp));
+
+        Label slashLabel = new Label("/");
+        slashLabel.setFont(Font.font("Arial", FontWeight.NORMAL, 20));
+        slashLabel.setTextFill(Color.web("#95a5a6"));
+
+        Label minTempLabel = new Label(convertTemp(minTemp) + getTempUnit());
+        minTempLabel.setFont(Font.font("Arial", FontWeight.BOLD, 20));
+        minTempLabel.setTextFill(getTemperatureColor(minTemp));
+
+        tempBox.getChildren().addAll(maxTempLabel, slashLabel, minTempLabel);
+
+        Label condLabel = new Label(condition);
+        condLabel.setFont(Font.font("Arial", FontWeight.NORMAL, 13));
+        condLabel.setTextFill(Color.web("#495057"));
+        condLabel.setWrapText(true);
+        condLabel.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
+        condLabel.setMaxWidth(150);
+
+        Label rainLabel = new Label("💧 " + rain + "%");
+        rainLabel.setFont(Font.font("Arial", FontWeight.SEMI_BOLD, 13));
+        rainLabel.setTextFill(Color.web("#3498db"));
+
+        box.getChildren().addAll(dayLabel, dateLabel, iconView, tempBox, condLabel, rainLabel);
+
+        box.setOnMouseClicked(e -> {
+            if (e.getClickCount() == 1) {
+                DayWeatherData data = new DayWeatherData(date, maxTemp, minTemp, condition, icon, rain, dayOfWeekHolder[0]);
+                showDayDetailDialog(data);
+            }
+        });
+
+        box.setOnMouseEntered(e -> {
+            box.setStyle(
+                "-fx-background-color: rgba(255, 255, 255, 0.92);" +
+                "-fx-background-radius: 15;" +
+                "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.15), 15, 0, 0, 5);" +
+                "-fx-cursor: hand;"
+            );
+        });
+        
+        box.setOnMouseExited(e -> {
+            box.setStyle(
+                "-fx-background-color: rgba(255, 255, 255, 0.75);" +
+                "-fx-background-radius: 15;" +
+                "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 10, 0, 0, 3);" +
+                "-fx-cursor: hand;"
+            );
+        });
+
+        return box;
+    }
+
+    private static class DayWeatherData {
+        String date, maxTemp, minTemp, condition, icon, rain, dayOfWeek;
+        
+        public DayWeatherData(String date, String maxTemp, String minTemp, String condition, 
+                             String icon, String rain, String dayOfWeek) {
+            this.date = date;
+            this.maxTemp = maxTemp;
+            this.minTemp = minTemp;
+            this.condition = condition;
+            this.icon = icon;
+            this.rain = rain;
+            this.dayOfWeek = dayOfWeek;
         }
     }
 
-    private void showMapErrorDialog(String message) {
-        Alert alert = new Alert(Alert.AlertType.ERROR);
-        alert.setTitle("Lỗi Weather Map");
-        alert.setHeaderText("Không thể mở bản đồ");
+    private void showDayDetailDialog(DayWeatherData data) {
+        Stage dialogStage = new Stage();
+        dialogStage.initModality(javafx.stage.Modality.APPLICATION_MODAL);
+        dialogStage.setTitle(isVietnamese ? "Chi tiết thời tiết" : "Weather Details");
+        
+        VBox mainContainer = new VBox(0);
+        mainContainer.setStyle("-fx-background-color: linear-gradient(from 0% 0% to 0% 100%, #667eea 0%, #764ba2 100%);");
+        
+        ScrollPane scrollPane = new ScrollPane();
+        scrollPane.setStyle("-fx-background: transparent; -fx-background-color: transparent;");
+        scrollPane.setFitToWidth(true);
+        scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        
+        VBox content = new VBox(25);
+        content.setPadding(new Insets(40));
+        content.setAlignment(Pos.TOP_CENTER);
+
+        VBox headerCard = new VBox(20);
+        headerCard.setAlignment(Pos.CENTER);
+        headerCard.setPadding(new Insets(30));
+        headerCard.setMaxWidth(650);
+        headerCard.setStyle(
+            "-fx-background-color: rgba(255, 255, 255, 0.95);" +
+            "-fx-background-radius: 25;" +
+            "-fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.15), 20, 0, 0, 10);"
+        );
+
+        String fullDate = "";
+        try {
+            String[] dateParts = data.date.split("-");
+            if (dateParts.length >= 3) {
+                int year = Integer.parseInt(dateParts[0]);
+                int month = Integer.parseInt(dateParts[1]);
+                int day = Integer.parseInt(dateParts[2]);
+                fullDate = isVietnamese ? "Ngày " + day + " tháng " + month + ", " + year : month + "/" + day + "/" + year;
+            }
+        } catch (Exception e) {
+            fullDate = data.date;
+        }
+
+        Label dowLabel = new Label(data.dayOfWeek);
+        dowLabel.setFont(Font.font("Arial", FontWeight.BOLD, 16));
+        dowLabel.setTextFill(Color.web("#667eea"));
+        dowLabel.setStyle("-fx-background-color: rgba(102, 126, 234, 0.1); -fx-padding: 5 15; -fx-background-radius: 15;");
+
+        Label dateLabel = new Label(fullDate);
+        dateLabel.setFont(Font.font("Arial", FontWeight.BOLD, 24));
+        dateLabel.setTextFill(Color.web("#16213e"));
+
+        ImageView iconView = new ImageView();
+        try {
+            iconView.setImage(new Image("https:" + data.icon, true));
+            iconView.setFitWidth(100);
+            iconView.setFitHeight(100);
+        } catch (Exception e) {}
+
+        Label conditionLabel = new Label(data.condition);
+        conditionLabel.setFont(Font.font("Arial", FontWeight.BOLD, 20));
+        conditionLabel.setTextFill(Color.web("#0f3460"));
+
+        HBox tempCards = new HBox(20);
+        tempCards.setAlignment(Pos.CENTER);
+        
+        VBox maxCard = createDetailStatCard(isVietnamese ? "Cao nhất" : "High",
+            convertTemp(data.maxTemp) + getTempUnit(), getTemperatureColor(data.maxTemp), "rgba(233, 69, 96, 0.1)");
+        VBox minCard = createDetailStatCard(isVietnamese ? "Thấp nhất" : "Low",
+            convertTemp(data.minTemp) + getTempUnit(), getTemperatureColor(data.minTemp), "rgba(52, 152, 219, 0.1)");
+        VBox rainCard = createDetailStatCard(isVietnamese ? "Khả năng mưa" : "Rain Chance",
+            data.rain + "%", Color.web("#3498db"), "rgba(52, 152, 219, 0.1)");
+
+        tempCards.getChildren().addAll(maxCard, minCard, rainCard);
+        headerCard.getChildren().addAll(dowLabel, dateLabel, iconView, conditionLabel, tempCards);
+        content.getChildren().add(headerCard);
+        scrollPane.setContent(content);
+        mainContainer.getChildren().add(scrollPane);
+        
+        Scene scene = new Scene(mainContainer, 800, 600);
+        dialogStage.setScene(scene);
+        dialogStage.show();
+    }
+
+    private VBox createDetailStatCard(String title, String value, Color valueColor, String bgColor) {
+        VBox card = new VBox(8);
+        card.setAlignment(Pos.CENTER);
+        card.setPadding(new Insets(20));
+        card.setPrefWidth(180);
+        card.setStyle("-fx-background-color: " + bgColor + "; -fx-background-radius: 15; -fx-border-color: rgba(0, 0, 0, 0.05); -fx-border-width: 1; -fx-border-radius: 15;");
+        
+        Label titleLabel = new Label(title);
+        titleLabel.setFont(Font.font("Arial", FontWeight.SEMI_BOLD, 13));
+        titleLabel.setTextFill(Color.web("#6c757d"));
+        
+        Label valueLabel = new Label(value);
+        valueLabel.setFont(Font.font("Arial", FontWeight.BOLD, 28));
+        valueLabel.setTextFill(valueColor);
+        
+        card.getChildren().addAll(titleLabel, valueLabel);
+        return card;
+    }
+
+    private void toggleFavorite() {
+        if (currentCity.isEmpty() || currentCountry.isEmpty()) {
+            showAlert(isVietnamese ? "Thông báo" : "Notice",
+                isVietnamese ? "Vui lòng chọn một thành phố trước!" : "Please select a city first!");
+            return;
+        }
+        
+        boolean isFav = dbManager.isFavorite(currentCity, currentCountry);
+        
+        if (isFav) {
+            boolean success = dbManager.removeFavorite(currentCity, currentCountry);
+            if (success) {
+                showAlert(isVietnamese ? "Thành công" : "Success",
+                    isVietnamese ? "Đã xóa khỏi danh sách yêu thích" : "Removed from favorites");
+                updateFavoriteButton();
+            }
+        } else {
+            boolean success = dbManager.addFavorite(currentCity, currentCountry, currentLat, currentLon);
+            if (success) {
+                showAlert(isVietnamese ? "Thành công" : "Success",
+                    isVietnamese ? "Đã thêm vào danh sách yêu thích" : "Added to favorites");
+                updateFavoriteButton();
+            }
+        }
+    }
+
+    private void showFavoritesList() {
+        Stage favStage = new Stage();
+        favStage.initModality(javafx.stage.Modality.APPLICATION_MODAL);
+        favStage.setTitle(isVietnamese ? "Danh sách yêu thích" : "Favorites List");
+        
+        VBox mainLayout = new VBox(0);
+        mainLayout.setStyle("-fx-background-color: linear-gradient(from 0% 0% to 100% 100%, #667eea 0%, #764ba2 100%);");
+        
+        VBox header = new VBox(10);
+        header.setAlignment(Pos.CENTER);
+        header.setPadding(new Insets(30, 20, 20, 20));
+        
+        Label titleLabel = new Label(isVietnamese ? "🌟 THÀNH PHỐ YÊU THÍCH" : "🌟 FAVORITE CITIES");
+        titleLabel.setFont(Font.font("Arial", FontWeight.BOLD, 24));
+        titleLabel.setTextFill(Color.WHITE);
+        titleLabel.setStyle("-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.3), 8, 0, 0, 2);");
+        
+        Label subtitleLabel = new Label(isVietnamese ? "Quản lý các địa điểm yêu thích của bạn" : "Manage your favorite locations");
+        subtitleLabel.setFont(Font.font("Arial", 14));
+        subtitleLabel.setTextFill(Color.web("rgba(255,255,255,0.8)"));
+        header.getChildren().addAll(titleLabel, subtitleLabel);
+        
+        VBox content = new VBox(20);
+        content.setPadding(new Insets(20));
+        content.setAlignment(Pos.TOP_CENTER);
+        content.setStyle("-fx-background-color: rgba(255,255,255,0.95); -fx-background-radius: 25 25 0 0;");
+        
+        ScrollPane scrollPane = new ScrollPane();
+        scrollPane.setFitToWidth(true);
+        scrollPane.setStyle("-fx-background-color: transparent; -fx-background: transparent;");
+        scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        
+        VBox citiesBox = new VBox(15);
+        citiesBox.setPadding(new Insets(10));
+        citiesBox.setAlignment(Pos.TOP_CENTER);
+        
+        List<DatabaseManager.FavoriteCity> favorites = dbManager.getAllFavorites();
+        
+        if (favorites.isEmpty()) {
+            VBox emptyBox = new VBox(20);
+            emptyBox.setAlignment(Pos.CENTER);
+            emptyBox.setPadding(new Insets(50, 20, 50, 20));
+            
+            Label iconLabel = new Label("🏙️");
+            iconLabel.setFont(Font.font(48));
+            
+            Label emptyTitle = new Label(isVietnamese ? "Chưa có thành phố yêu thích" : "No favorite cities yet");
+            emptyTitle.setFont(Font.font("Arial", FontWeight.BOLD, 18));
+            emptyTitle.setTextFill(Color.web("#6c757d"));
+            
+            Label emptyDesc = new Label(isVietnamese ? "Thêm thành phố vào danh sách yêu thích để truy cập nhanh" : "Add cities to your favorites for quick access");
+            emptyDesc.setFont(Font.font("Arial", 14));
+            emptyDesc.setTextFill(Color.web("#95a5a6"));
+            emptyDesc.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
+            emptyDesc.setWrapText(true);
+            emptyDesc.setMaxWidth(300);
+            
+            emptyBox.getChildren().addAll(iconLabel, emptyTitle, emptyDesc);
+            citiesBox.getChildren().add(emptyBox);
+        } else {
+            for (DatabaseManager.FavoriteCity city : favorites) {
+                VBox cityCard = createFavoriteCityCard(city, favStage);
+                citiesBox.getChildren().add(cityCard);
+            }
+        }
+        
+        scrollPane.setContent(citiesBox);
+        
+        HBox footer = new HBox();
+        footer.setAlignment(Pos.CENTER);
+        footer.setPadding(new Insets(20, 0, 10, 0));
+        
+        Button closeBtn = new Button(isVietnamese ? "ĐÓNG" : "CLOSE");
+        closeBtn.setFont(Font.font("Arial", FontWeight.BOLD, 14));
+        closeBtn.setStyle("-fx-background-color: linear-gradient(to right, #667eea, #764ba2); -fx-text-fill: white; -fx-background-radius: 20; -fx-padding: 10 25; -fx-cursor: hand; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.2), 5, 0, 0, 2);");
+        closeBtn.setOnAction(e -> favStage.close());
+        
+        footer.getChildren().add(closeBtn);
+        content.getChildren().addAll(scrollPane, footer);
+        mainLayout.getChildren().addAll(header, content);
+        
+        Scene scene = new Scene(mainLayout, 500, 600);
+        favStage.setScene(scene);
+        favStage.show();
+    }
+
+    private VBox createFavoriteCityCard(DatabaseManager.FavoriteCity city, Stage parentStage) {
+        VBox card = new VBox(0);
+        card.setAlignment(Pos.TOP_LEFT);
+        card.setStyle("-fx-background-color: white; -fx-background-radius: 15; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 10, 0, 0, 3); -fx-cursor: hand;");
+        
+        HBox header = new HBox();
+        header.setAlignment(Pos.CENTER_LEFT);
+        header.setPadding(new Insets(15, 20, 15, 20));
+        header.setStyle("-fx-background-color: linear-gradient(to right, #667eea, #764ba2); -fx-background-radius: 15 15 0 0;");
+        
+        Label locationIcon = new Label("📍");
+        locationIcon.setFont(Font.font(16));
+        
+        VBox nameBox = new VBox(2);
+        Label nameLabel = new Label(city.getDisplayName());
+        nameLabel.setFont(Font.font("Arial", FontWeight.BOLD, 16));
+        nameLabel.setTextFill(Color.WHITE);
+        nameLabel.setStyle("-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.2), 2, 0, 0, 1);");
+        
+        Label countryLabel = new Label(city.country);
+        countryLabel.setFont(Font.font("Arial", 12));
+        countryLabel.setTextFill(Color.web("rgba(255,255,255,0.8)"));
+        
+        nameBox.getChildren().addAll(nameLabel, countryLabel);
+        HBox.setHgrow(nameBox, Priority.ALWAYS);
+        header.getChildren().addAll(locationIcon, nameBox);
+        
+        HBox content = new HBox(15);
+        content.setAlignment(Pos.CENTER_LEFT);
+        content.setPadding(new Insets(20));
+        
+        VBox infoBox = new VBox(8);
+        
+        HBox coordBox = new HBox(8);
+        coordBox.setAlignment(Pos.CENTER_LEFT);
+        Label coordIcon = new Label("🌐");
+        coordIcon.setFont(Font.font(12));
+        Label coordLabel = new Label(String.format("%.4f, %.4f", city.latitude, city.longitude));
+        coordLabel.setFont(Font.font("Arial", 12));
+        coordLabel.setTextFill(Color.web("#6c757d"));
+        coordBox.getChildren().addAll(coordIcon, coordLabel);
+        
+        HBox dateBox = new HBox(8);
+        dateBox.setAlignment(Pos.CENTER_LEFT);
+        Label dateIcon = new Label("📅");
+        dateIcon.setFont(Font.font(12));
+        String formattedDate = formatDate(city.addedDate);
+        Label dateLabel = new Label((isVietnamese ? "Đã thêm: " : "Added: ") + formattedDate);
+        dateLabel.setFont(Font.font("Arial", 11));
+        dateLabel.setTextFill(Color.web("#95a5a6"));
+        dateBox.getChildren().addAll(dateIcon, dateLabel);
+        infoBox.getChildren().addAll(coordBox, dateBox);
+        HBox.setHgrow(infoBox, Priority.ALWAYS);
+        
+        HBox buttonBox = new HBox(10);
+        buttonBox.setAlignment(Pos.CENTER_RIGHT);
+        
+        Button viewBtn = createActionButton("👁", isVietnamese ? "Xem thời tiết" : "View weather", Color.web("#2ecc71"));
+        Button removeBtn = createActionButton("X", isVietnamese ? "Xóa" : "Remove", Color.web("#e74c3c"));
+        
+        viewBtn.setOnAction(e -> {
+            currentLocation = city.getCoordinates();
+            cityInput.setText(city.cityName);
+            loadAllWeatherData();
+            parentStage.close();
+        });
+        
+        removeBtn.setOnAction(e -> {
+            dbManager.removeFavorite(city.cityName, city.country);
+            parentStage.close();
+            showFavoritesList();
+        });
+        
+        buttonBox.getChildren().addAll(viewBtn, removeBtn);
+        content.getChildren().addAll(infoBox, buttonBox);
+        card.getChildren().addAll(header, content);
+        
+        card.setOnMouseEntered(e -> card.setStyle("-fx-background-color: #f8f9fa; -fx-background-radius: 15; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.15), 15, 0, 0, 5); -fx-cursor: hand;"));
+        card.setOnMouseExited(e -> card.setStyle("-fx-background-color: white; -fx-background-radius: 15; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 10, 0, 0, 3); -fx-cursor: hand;"));
+        
+        return card;
+    }
+
+    private Button createActionButton(String icon, String tooltip, Color color) {
+        Button button = new Button(icon);
+        button.setFont(Font.font(14));
+        button.setStyle(String.format("-fx-background-color: %s; -fx-text-fill: white; -fx-background-radius: 20; -fx-padding: 8 12; -fx-cursor: hand; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.2), 3, 0, 0, 1);", color.toString().replace("0x", "#")));
+        
+        Tooltip tip = new Tooltip(tooltip);
+        tip.setStyle("-fx-font-size: 11;");
+        Tooltip.install(button, tip);
+        
+        button.setOnMouseEntered(e -> button.setStyle(String.format("-fx-background-color: %s; -fx-text-fill: white; -fx-background-radius: 20; -fx-padding: 8 12; -fx-cursor: hand; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.3), 5, 0, 0, 2);", color.darker().toString().replace("0x", "#"))));
+        button.setOnMouseExited(e -> button.setStyle(String.format("-fx-background-color: %s; -fx-text-fill: white; -fx-background-radius: 20; -fx-padding: 8 12; -fx-cursor: hand; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.2), 3, 0, 0, 1);", color.toString().replace("0x", "#"))));
+        
+        return button;
+    }
+
+    private String formatDate(java.sql.Timestamp timestamp) {
+        try {
+            if (timestamp == null) return "N/A";
+            java.time.LocalDateTime dateTime = timestamp.toLocalDateTime();
+            return isVietnamese ? 
+                dateTime.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")) :
+                dateTime.format(java.time.format.DateTimeFormatter.ofPattern("MM/dd/yyyy"));
+        } catch (Exception e) {
+            return "N/A";
+        }
+    }
+
+    private void updateLanguage() {
+        titleLabel.setText(isVietnamese ? "🌤 DỰ BÁO THỜI TIẾT" : "🌤 WEATHER FORECAST");
+        cityInput.setPromptText(isVietnamese ? "Nhập tên thành phố..." : "Enter city name...");
+        currentWeatherTitle.setText(isVietnamese ? "THỜI TIẾT HIỆN TẠI" : "CURRENT WEATHER");
+        forecastTitle.setText(isVietnamese ? "DỰ BÁO 5 NGÀY" : "5-DAY FORECAST");
+        hourlyTitle.setText(isVietnamese ? "DỰ BÁO 24 GIỜ" : "24-HOUR FORECAST");
+        statusLabel.setText(isVietnamese ? "✓ Đã kết nối đến server" : "✓ Connected to server");
+    }
+
+    private void connectToServer() {
+        new Thread(() -> {
+            try {
+                socket = new Socket("localhost", 5000);
+                br = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                bw = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
+
+                Platform.runLater(() -> {
+                    statusLabel.setText(isVietnamese ? "✓ Đã kết nối đến server" : "✓ Connected to server");
+                    statusLabel.setTextFill(Color.web("#2ecc71"));
+                });
+            } catch (IOException e) {
+                Platform.runLater(() -> {
+                    statusLabel.setText(isVietnamese ? "✗ Không thể kết nối" : "✗ Connection failed");
+                    statusLabel.setTextFill(Color.web("#e94560"));
+                    showAlert(isVietnamese ? "Lỗi" : "Error",
+                            isVietnamese ? "Không thể kết nối đến server!" : "Cannot connect to server!");
+                });
+            }
+        }).start();
+    }
+
+    private void getCurrentLocationWeather() {
+        if (socket == null || socket.isClosed()) {
+            showAlert(isVietnamese ? "Lỗi" : "Error", isVietnamese ? "Chưa kết nối đến server!" : "Not connected to server!");
+            return;
+        }
+
+        statusLabel.setText(isVietnamese ? "Đang lấy vị trí..." : "Getting location...");
+
+        new Thread(() -> {
+            try {
+                String ipApiUrl = "http://ip-api.com/json/?lang=vi";
+                URL url = new URL(ipApiUrl);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("GET");
+                conn.setConnectTimeout(5000);
+
+                BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), java.nio.charset.StandardCharsets.UTF_8));
+                StringBuilder response = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    response.append(line);
+                }
+                reader.close();
+
+                String json = response.toString();
+                double lat = Double.parseDouble(extractJsonValue(json, "\"lat\":"));
+                double lon = Double.parseDouble(extractJsonValue(json, "\"lon\":"));
+                String city = extractJsonValue(json, "\"city\":");
+
+                currentLocation = "LAT:" + lat + "," + lon;
+
+                Platform.runLater(() -> {
+                    cityInput.setText(city);
+                    statusLabel.setText(isVietnamese ? "✓ Đã kết nối đến server" : "✓ Connected to server");
+                    loadAllWeatherData();
+                });
+
+            } catch (Exception e) {
+                Platform.runLater(() -> {
+                    showAlert(isVietnamese ? "Lỗi" : "Error", isVietnamese ? "Không thể lấy vị trí: " + e.getMessage()
+                            : "Cannot get location: " + e.getMessage());
+                    statusLabel.setText(isVietnamese ? "✓ Đã kết nối đến server" : "✓ Connected to server");
+                });
+            }
+        }).start();
+    }
+
+    private void searchWeather() {
+        String city = cityInput.getText().trim();
+        if (city.isEmpty()) {
+            showAlert(isVietnamese ? "Thông báo" : "Notice",
+                    isVietnamese ? "Vui lòng nhập tên thành phố!" : "Please enter city name!");
+            return;
+        }
+
+        if (socket == null || socket.isClosed()) {
+            showAlert(isVietnamese ? "Lỗi" : "Error",
+                    isVietnamese ? "Chưa kết nối đến server!" : "Not connected to server!");
+            return;
+        }
+
+        currentLocation = city;
+        loadAllWeatherData();
+    }
+
+    private void loadAllWeatherData() {
+        loadCurrentWeather();
+        loadForecast();
+    }
+
+    private void loadCurrentWeather() {
+        new Thread(() -> {
+            synchronized (socketLock) {
+                try {
+                    bw.write("CURRENT|" + currentLocation);
+                    bw.newLine();
+                    bw.flush();
+
+                    String response = br.readLine();
+                    Platform.runLater(() -> displayCurrentWeather(response));
+                } catch (IOException e) {
+                    Platform.runLater(() -> showAlert(isVietnamese ? "Lỗi" : "Error",
+                            isVietnamese ? "Lỗi kết nối: " + e.getMessage() : "Connection error: " + e.getMessage()));
+                }
+            }
+        }).start();
+    }
+
+    private void loadForecast() {
+        new Thread(() -> {
+            synchronized (socketLock) {
+                try {
+                    bw.write("FORECAST|" + currentLocation + "|5");
+                    bw.newLine();
+                    bw.flush();
+
+                    String response = br.readLine();
+                    Platform.runLater(() -> displayForecast(response));
+                } catch (IOException e) {
+                    Platform.runLater(() -> showAlert(isVietnamese ? "Lỗi" : "Error",
+                            isVietnamese ? "Lỗi kết nối: " + e.getMessage() : "Connection error: " + e.getMessage()));
+                }
+            }
+        }).start();
+    }
+
+    private Color getTemperatureColor(String tempStr) {
+        try {
+            double temp = Double.parseDouble(tempStr);
+            if (temp <= 10) return Color.web("#0d47a1");
+            else if (temp <= 15) return Color.web("#1976d2");
+            else if (temp <= 20) return Color.web("#42a5f5");
+            else if (temp <= 25) return Color.web("#66bb6a");
+            else if (temp <= 30) return Color.web("#ffa726");
+            else if (temp <= 35) return Color.web("#ff7043");
+            else return Color.web("#e53935");
+        } catch (NumberFormatException e) {
+            return Color.web("#495057");
+        }
+    }
+
+    private void displayCurrentWeather(String response) {
+        String[] parts = response.split("\\|");
+        if (parts[0].equals("ERROR")) {
+            showAlert(isVietnamese ? "Lỗi" : "Error", 
+                     parts.length > 1 ? parts[1] : (isVietnamese ? "Lỗi không xác định" : "Unknown error"));
+            return;
+        }
+        if (parts.length < 12) {
+            showAlert(isVietnamese ? "Lỗi" : "Error", 
+                     isVietnamese ? "Dữ liệu không hợp lệ" : "Invalid data");
+            return;
+        }
+        
+        currentCity = parts[1];
+        currentCountry = parts[2];
+        if (currentLocation.startsWith("LAT:")) {
+            String[] coords = currentLocation.substring(4).split(",");
+            if (coords.length >= 2) {
+                try {
+                    currentLat = Double.parseDouble(coords[0].trim());
+                    currentLon = Double.parseDouble(coords[1].trim());
+                } catch (NumberFormatException e) {
+                    currentLat = 0;
+                    currentLon = 0;
+                }
+            }
+        }
+        
+        String weatherCondition = parts[5];
+        loadWeatherVideo(weatherCondition);
+        
+        String inputCity = cityInput.getText() != null ? cityInput.getText().trim() : "";
+        String displayCity = inputCity.isEmpty() ? parts[1] : inputCity;
+        cityNameLabel.setText(displayCity + ", " + parts[2]);
+        temperatureLabel.setText(convertTemp(parts[3]) + getTempUnit());
+        temperatureLabel.setTextFill(getTemperatureColor(parts[3]));
+        feelsLikeLabel.setText((isVietnamese ? "Cảm giác như " : "Feels like ") + convertTemp(parts[8]) + getTempUnit());
+        conditionLabel.setText(parts[5]);
+        humidityLabel.setText("💧 " + (isVietnamese ? "Độ ẩm: " : "Humidity: ") + parts[4] + "%");
+        windLabel.setText("🌬 " + (isVietnamese ? "Gió " : "Wind ") + parts[6] + ": " + parts[7] + " km/h");
+        cloudLabel.setText("☁ " + (isVietnamese ? "Mây: " : "Cloud: ") + parts[9] + "%");
+        uvLabel.setText("☀ UV: " + parts[10]);
+        try {
+            String iconUrl = "https:" + parts[11];
+            weatherIcon.setImage(new Image(iconUrl, true));
+        } catch (Exception e) {
+            weatherIcon.setImage(null);
+        }
+        updateFavoriteButton();
+    }
+
+    private void updateFavoriteButton() {
+        if (favoriteBtn == null || currentCity.isEmpty() || currentCountry.isEmpty()) {
+            return;
+        }
+        
+        boolean isFav = dbManager.isFavorite(currentCity, currentCountry);
+        
+        if (isFav) {
+            favoriteBtn.setText("★");
+            favoriteBtn.setStyle("-fx-background-color: transparent; -fx-text-fill: #ffd700; -fx-cursor: hand; -fx-padding: 5 15; -fx-font-size: 24px;");
+        } else {
+            favoriteBtn.setText("☆");
+            favoriteBtn.setStyle("-fx-background-color: transparent; -fx-text-fill: #cccccc; -fx-cursor: hand; -fx-padding: 5 15; -fx-font-size: 24px;");
+        }
+    }
+
+    private void displayForecast(String response) {
+        String[] parts = response.split("\\|");
+        if (parts[0].equals("ERROR")) {
+            showAlert(isVietnamese ? "Lỗi" : "Error",
+                    parts.length > 1 ? parts[1] : (isVietnamese ? "Lỗi không xác định" : "Unknown error"));
+            return;
+        }
+
+        forecastDaysBox.getChildren().clear();
+        hourlyBox.getChildren().clear();
+
+        int hourlyIndex = -1;
+        for (int i = 0; i < parts.length; i++) {
+            if (parts[i].equals("HOURLY")) {
+                hourlyIndex = i;
+                break;
+            }
+        }
+
+        int endIndex = hourlyIndex != -1 ? hourlyIndex : Math.min(parts.length, 7);
+        for (int i = 2; i < endIndex; i++) {
+            String[] dayData = parts[i].split(",");
+            if (dayData.length >= 6) {
+                VBox dayBox = createForecastDayBox(dayData[0], dayData[1], dayData[2], dayData[3], dayData[4], dayData[5]);
+                forecastDaysBox.getChildren().add(dayBox);
+            }
+        }
+
+        if (hourlyIndex != -1 && hourlyIndex + 1 < parts.length) {
+            for (int i = hourlyIndex + 1; i < parts.length; i++) {
+                String[] hourData = parts[i].split(",");
+                if (hourData.length >= 4) {
+                    VBox hourBox = createHourlyBox(hourData[0], hourData[1], hourData[2], hourData[3]);
+                    hourlyBox.getChildren().add(hourBox);
+                }
+            }
+        }
+    }
+
+    private String extractJsonValue(String json, String key) {
+        int keyIndex = json.indexOf(key);
+        if (keyIndex == -1) return "";
+
+        int valueStart = keyIndex + key.length();
+        while (valueStart < json.length() && (json.charAt(valueStart) == ' ' || json.charAt(valueStart) == '"')) {
+            valueStart++;
+        }
+
+        int valueEnd = valueStart;
+        boolean inQuotes = json.charAt(keyIndex + key.length()) == '"' || (valueStart > 0 && json.charAt(valueStart - 1) == '"');
+
+        if (inQuotes) {
+            valueEnd = json.indexOf("\"", valueStart);
+        } else {
+            while (valueEnd < json.length()) {
+                char c = json.charAt(valueEnd);
+                if (c == ',' || c == '}') break;
+                valueEnd++;
+            }
+        }
+
+        if (valueEnd == -1) valueEnd = json.length();
+        return json.substring(valueStart, valueEnd).trim();
+    }
+
+    private void showAlert(String title, String message) {
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        alert.setTitle(title);
+        alert.setHeaderText(null);
         alert.setContentText(message);
         alert.showAndWait();
     }
 
-    
-
-        // Build small vector clock graphic used in header
-        private StackPane buildClockGraphic() {
-            double size = 48;
-            double center = size / 2.0;
-            StackPane pane = new StackPane();
-            pane.setPrefSize(size, size);
-
-            Circle face = new Circle(center, center, center - 1);
-            face.setFill(new LinearGradient(0, 0, 0, 1, true, CycleMethod.NO_CYCLE,
-                new Stop(0, Color.rgb(255,255,255,0.06)), new Stop(1, Color.rgb(255,255,255,0.02))));
-            face.setStroke(Color.rgb(255,255,255,0.18));
-            face.setStrokeWidth(1.2);
-            face.setEffect(new DropShadow(6, Color.rgb(0,0,0,0.25)));
-
-            Group hands = new Group();
-
-            Line hourHand = new Line(0, -8, 0, 2);
-            hourHand.setStroke(Color.WHITE);
-            hourHand.setStrokeWidth(3);
-            hourHand.setStrokeLineCap(StrokeLineCap.ROUND);
-            hourHandRotate = new javafx.scene.transform.Rotate(0, 0, 0);
-            hourHand.getTransforms().add(hourHandRotate);
-
-            Line minuteHand = new Line(0, -12, 0, 2);
-            minuteHand.setStroke(Color.WHITE);
-            minuteHand.setStrokeWidth(2);
-            minuteHand.setStrokeLineCap(StrokeLineCap.ROUND);
-            minuteHandRotate = new javafx.scene.transform.Rotate(0, 0, 0);
-            minuteHand.getTransforms().add(minuteHandRotate);
-
-            Line secondHand = new Line(0, -14, 0, 4);
-            secondHand.setStroke(Color.web("#FFD700"));
-            secondHand.setStrokeWidth(1);
-            secondHand.setStrokeLineCap(StrokeLineCap.ROUND);
-            secondHandRotate = new javafx.scene.transform.Rotate(0, 0, 0);
-            secondHand.getTransforms().add(secondHandRotate);
-
-            Circle pin = new Circle(0, 0, 2, Color.web("#FFD700"));
-
-            hands.getChildren().addAll(hourHand, minuteHand, secondHand, pin);
-            hands.setLayoutX(center);
-            hands.setLayoutY(center);
-
-            pane.getChildren().addAll(face, hands);
-            return pane;
-        }
-
-        // Helper: create a simple magnifier icon using vector shapes so it scales nicely
-        private Node createMagnifierIcon(Color color, double size, double strokeWidth) {
-            Group g = new Group();
-            double r = size * 0.35;
-            Circle ring = new Circle(0, 0, r);
-            ring.setFill(Color.TRANSPARENT);
-            ring.setStroke(color);
-            ring.setStrokeWidth(strokeWidth);
-
-            Line handle = new Line(r * 0.6, r * 0.6, r * 1.4, r * 1.4);
-            handle.setStroke(color);
-            handle.setStrokeWidth(strokeWidth);
-            handle.setStrokeLineCap(StrokeLineCap.ROUND);
-
-            g.getChildren().addAll(ring, handle);
-            StackPane wrap = new StackPane(g);
-            wrap.setPrefSize(size + 8, size + 8);
-            return wrap;
-        }
-
-        // Helper: create a simple location-pin icon (circle + triangular tail)
-        private Node createLocationPinIcon(Color color, double size) {
-            Group g = new Group();
-            double headR = size * 0.45;
-            Circle head = new Circle(0, -size * 0.12, headR);
-            head.setFill(color);
-
-            Polygon tail = new Polygon();
-            // triangle pointing down under the head
-            tail.getPoints().addAll(
-                0.0, headR * 1.6,
-                -headR * 0.7, headR * 0.0,
-                headR * 0.7, headR * 0.0
-            );
-            tail.setFill(color);
-
-            g.getChildren().addAll(head, tail);
-            StackPane wrap = new StackPane(g);
-            wrap.setPrefSize(size + 12, size + 12);
-            return wrap;
-        }
-
-        /**
-         * Bắt đầu đồng hồ thời gian thực - cập nhật mỗi giây
-         */
-        private void startClock() {
-            // Cập nhật ngay lập tức
-            updateClock();
-            // Cập nhật mỗi giây
-            clockTimeline = new Timeline(new KeyFrame(Duration.seconds(1), e -> updateClock()));
-            clockTimeline.setCycleCount(Timeline.INDEFINITE);
-            clockTimeline.play();
-        }
-
-        private void updateClock() {
-            LocalDateTime now = LocalDateTime.now();
-
-            int h = now.getHour() % 12;
-            int m = now.getMinute();
-            int s = now.getSecond();
-
-            double secondAngle = s * 6.0; // 360 / 60
-            double minuteAngle = m * 6.0 + s * 0.1; // plus seconds fraction
-            double hourAngle = h * 30.0 + m * 0.5; // 360 / 12 + minutes fraction
-
-            if (secondHandRotate != null) secondHandRotate.setAngle(secondAngle);
-            if (minuteHandRotate != null) minuteHandRotate.setAngle(minuteAngle);
-            if (hourHandRotate != null) hourHandRotate.setAngle(hourAngle);
-
-            DateTimeFormatter timeFmt = DateTimeFormatter.ofPattern("HH:mm:ss");
-            DateTimeFormatter dateFmt = DateTimeFormatter.ofPattern("dd/MM/yyyy");
-            if (currentTimeLabel != null) currentTimeLabel.setText(now.format(timeFmt) + " - " + now.format(dateFmt));
-        }
-
-        /**
-         * Get approximate location via IP geolocation and query server for weather.
-         * Uses http://ip-api.com/json which returns {lat, lon, city, country, ...}
-         */
-        private void performGeoSearch() {
-            weatherUI.showLoading(true);
-            btnMyLocation.setDisable(true);
-            btnSearch.setDisable(true);
-            txtCity.setDisable(true);
-
-            new Thread(() -> {
-                String geoJson = null;
-                try {
-                    java.net.URL url = new java.net.URL("http://ip-api.com/json");
-                    java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
-                    conn.setRequestMethod("GET");
-                    conn.setConnectTimeout(5000);
-                    conn.setReadTimeout(5000);
-                    int code = conn.getResponseCode();
-                    java.io.InputStream is = (code == 200) ? conn.getInputStream() : conn.getErrorStream();
-                    geoJson = new String(is.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
-                    conn.disconnect();
-                } catch (Exception ex) {
-                    geoJson = null;
-                }
-
-                final String response = geoJson;
-                Platform.runLater(() -> {
-                    try {
-                        setStatus("Resolving current location...");
-                        if (response == null || response.isEmpty()) {
-                            weatherUI.showError("⚠️ Không thể lấy vị trí hiện tại");
-                            setStatus("Could not resolve location");
-                            return;
-                        }
-
-                        // Robust parsing: extract numeric lat/lon and string city
-                        String lat = extractJsonValue(response, "lat");
-                        String lon = extractJsonValue(response, "lon");
-                        String city = extractJsonString(response, "city");
-                        String country = extractJsonString(response, "country");
-
-                        // Update location card labels if available
-                        try {
-                            if (locationLine1 != null) {
-                                if (city != null && !city.isEmpty()) {
-                                    locationLine1.setText(city + (country != null ? ", " + country : ""));
-                                } else if (lat != null && lon != null) {
-                                    locationLine1.setText(String.format("%s, %s", lat, lon));
-                                } else {
-                                    locationLine1.setText("--");
-                                }
-                            }
-                            if (locationLine2 != null) {
-                                locationLine2.setText("Tự động phát hiện");
-                            }
-                        } catch (Exception ex) {
-                            // ignore UI update errors
-                        }
-
-                        String request = null;
-                        if (lat != null && lon != null) {
-                            request = "coord:" + lat + "," + lon;
-                        } else if (city != null && !city.isEmpty()) {
-                            request = city;
-                        } else {
-                            weatherUI.showError("⚠️ Không tìm thấy thông tin vị trí trong phản hồi");
-                            setStatus("No usable location in geolocation response");
-                            return;
-                        }
-
-                        final String reqToSend = request;
-                        setStatus("Querying weather for: " + reqToSend);
-                        tcpClient.sendAsync(reqToSend, resp -> {
-                            Platform.runLater(() -> {
-                                weatherUI.showLoading(false);
-                                btnMyLocation.setDisable(false);
-                                btnSearch.setDisable(false);
-                                txtCity.setDisable(false);
-
-                                if (resp == null || resp.isEmpty()) {
-                                    weatherUI.showError("❌ No response from server!");
-                                    setStatus("Server returned empty response");
-                                    return;
-                                }
-                                displayWeather(resp);
-                                setStatus("Showing weather for: " + reqToSend);
-                            });
-                        });
-
-                    } finally {
-                        weatherUI.showLoading(false);
-                        btnMyLocation.setDisable(false);
-                        btnSearch.setDisable(false);
-                        txtCity.setDisable(false);
-                    }
-                });
-            }).start();
-        }
-
-        // Very-small helper: extract numeric value (or negative) from JSON by key
-        private String extractJsonValue(String json, String key) {
-            if (json == null || key == null) return null;
-            try {
-                String look = '"' + key + '"';
-                int idx = json.indexOf(look);
-                if (idx == -1) return null;
-                int colon = json.indexOf(':', idx + look.length());
-                if (colon == -1) return null;
-                int i = colon + 1;
-                // skip whitespace
-                while (i < json.length() && Character.isWhitespace(json.charAt(i))) i++;
-                if (i >= json.length()) return null;
-                // if value is a string, not numeric
-                if (json.charAt(i) == '"') return null;
-                int start = i;
-                int end = start;
-                while (end < json.length()) {
-                    char c = json.charAt(end);
-                    if ((c >= '0' && c <= '9') || c == '-' || c == '+' || c == '.' || c == 'e' || c == 'E') {
-                        end++; continue;
-                    }
-                    break;
-                }
-                if (end == start) return null;
-                return json.substring(start, end).trim();
-            } catch (Exception e) {
-                return null;
+    private void closeConnection() {
+        try {
+            if (mediaPlayer != null) {
+                mediaPlayer.stop();
+                mediaPlayer.dispose();
             }
-        }
-
-        // Very-small helper: extract string value from JSON by key
-        private String extractJsonString(String json, String key) {
-            if (json == null || key == null) return null;
-            try {
-                String look = '"' + key + '"';
-                int idx = json.indexOf(look);
-                if (idx == -1) return null;
-                int colon = json.indexOf(':', idx + look.length());
-                if (colon == -1) return null;
-                int i = colon + 1;
-                // skip whitespace
-                while (i < json.length() && Character.isWhitespace(json.charAt(i))) i++;
-                if (i >= json.length() || json.charAt(i) != '"') return null;
-                i++; // move past opening quote
-                StringBuilder sb = new StringBuilder();
-                while (i < json.length()) {
-                    char c = json.charAt(i);
-                    if (c == '\\') {
-                        // escaped char
-                        if (i + 1 < json.length()) {
-                            char next = json.charAt(i + 1);
-                            // handle basic escapes
-                            if (next == '"' || next == '\\' || next == '/') sb.append(next);
-                            else if (next == 'b') sb.append('\b');
-                            else if (next == 'f') sb.append('\f');
-                            else if (next == 'n') sb.append('\n');
-                            else if (next == 'r') sb.append('\r');
-                            else if (next == 't') sb.append('\t');
-                            // skip unicode and others for brevity
-                            i += 2; continue;
-                        } else break;
-                    }
-                    if (c == '"') break;
-                    sb.append(c);
-                    i++;
-                }
-                return sb.toString();
-            } catch (Exception e) { return null; }
-        }
-
-        private void setStatus(String txt) {
-            try {
-                if (statusLabel != null) statusLabel.setText(txt);
-            } catch (Exception ignored) {}
-        }
-
-        private void performSearch() {
-            String city = txtCity.getText().trim();
-
-            if (city.isEmpty()) {
-                weatherUI.showError("⚠️ Vui lòng nhập tên thành phố!");
-                return;
+            if (dbManager != null) {
+                dbManager.close();
             }
-
-            weatherUI.showLoading(true);
-            btnSearch.setDisable(true);
-            txtCity.setDisable(true);
-
-            setStatus("🔍 Đang truy vấn thông tin thời tiết cho: " + city);
-
-            // 🔹 Thread riêng để tránh đứng giao diện
-            new Thread(() -> {
-                try {
-                    // Send city name directly to server; map/geocoding removed.
-                    String req = city;
-                    tcpClient.sendAsync(req, weatherResp -> {
-                        Platform.runLater(() -> {
-                            if (weatherResp == null || weatherResp.isEmpty()) {
-                                weatherUI.showError("❌ No response from server for weather query");
-                            } else {
-                                displayWeather(weatherResp);
-                            }
-                            // Restore UI
-                            weatherUI.showLoading(false);
-                            btnSearch.setDisable(false);
-                            txtCity.setDisable(false);
-                        });
-                    });
-                } catch (Exception e) {
-                    Platform.runLater(() -> {
-                        weatherUI.showError("⚠️ Lỗi khi truy vấn: " + e.getMessage());
-                        weatherUI.showLoading(false);
-                        btnSearch.setDisable(false);
-                        txtCity.setDisable(false);
-                    });
-                }
-            }).start();
+            if (bw != null) bw.close();
+            if (br != null) br.close();
+            if (socket != null) socket.close();
+        } catch (IOException e) {
+            e.printStackTrace();
         }
+    }
 
-
-
-        private void displayWeather(String jsonResponse) {
-            try {
-                // 1. Parse dữ liệu hiện tại
-                WeatherDataParser.WeatherData data = dataParser.parseWeatherData(jsonResponse);
-                // 2. Parse toàn bộ 40 mục dự báo (5 ngày / 3 giờ)
-                List<WeatherDataParser.ForecastItem> hourlyForecast = dataParser.parseForecastData(jsonResponse);
-                // 3. ➕ Tổng hợp 40 mục đó thành 5-6 mục theo ngày
-                List<WeatherDataParser.DailyForecastItem> dailyForecast = dataParser.aggregateDailyForecast(hourlyForecast, data.timezone);
-                
-                // 4. ➕ Truyền cả 3 vào hàm hiển thị
-                updateWeatherDisplay(data, hourlyForecast, dailyForecast);
-                
-            } catch (Exception e) {
-                weatherUI.showError("❌ " + e.getMessage());
-                System.err.println("Error parsing: " + e.getMessage());
-                e.printStackTrace();
+    private String convertTemp(String tempC) {
+        try {
+            double temp = Double.parseDouble(tempC);
+            if (isCelsius) {
+                return String.format("%.1f", temp);
+            } else {
+                double tempF = (temp * 9.0 / 5.0) + 32;
+                return String.format("%.1f", tempF);
             }
+        } catch (NumberFormatException e) {
+            return tempC;
         }
+    }
 
-        private void updateWeatherDisplay(WeatherDataParser.WeatherData data, 
-                                          List<WeatherDataParser.ForecastItem> hourly, 
-                                          List<WeatherDataParser.DailyForecastItem> daily) {
-            try {
-                // Update weather icon
-                if (data.iconCode != null && !data.iconCode.isEmpty()) {
-                    weatherUI.updateWeatherIcon(WeatherHelper.getWeatherIconUrl(data.iconCode));
-                }
-                
-                // Update basic info
-                weatherUI.setTemperatures(data.temperature, data.feelsLike, data.temp_min, data.temp_max);
-                weatherUI.getDescriptionLabel().setText(WeatherHelper.capitalizeFirst(data.description));
-                
-                if (data.cityName != null && data.country != null) {
-                    weatherUI.getCityLabel().setText("📍 " + data.cityName + ", " + data.country);
-                    // wire favorite button state and action
-                    String cityKey = data.cityName + "," + data.country;
-                    // remember current city for later UI sync
-                    currentCityKey = cityKey;
-                    
-                    // Setup favorite button handler (only once, safe to call multiple times)
-                    setupFavoriteButton();
+    private String getTempUnit() {
+        return isCelsius ? "°C" : "°F";
+    }
 
-                    // Update favorites list display (this will also set fav selection when GET_FAV returns)
-                    refreshFavoritesList();
-                }
-                
-                // "Feels like" is handled by setTemperatures (updates feels-like according to unit)
-                
-                // Update detailed info (4 ô chính)
-                weatherUI.getHumidityLabel().setText(data.humidity + "%");
-                weatherUI.getWindLabel().setText(WeatherHelper.formatWindSpeed(data.windSpeed));
-                weatherUI.getPressureLabel().setText(WeatherHelper.formatPressure(data.pressure));
-                weatherUI.getVisibilityLabel().setText(WeatherHelper.formatVisibility(data.visibility));
-                
-                // Min/Max handled by setTemperatures
-                
-                // Format sunrise/sunset
-                weatherUI.getSunriseLabel().setText(WeatherHelper.formatTime(data.sunrise, data.timezone));
-                weatherUI.getSunsetLabel().setText(WeatherHelper.formatTime(data.sunset, data.timezone));
-                
-                // Update background và weather animation
-                boolean isDay = WeatherHelper.isDayTime(data.sunrise, data.sunset);
-                weatherUI.updateWeatherBackground(data.mainWeather, isDay);
-                
-                // Forecast data handled locally; AI/Gemini integration removed
-                
-                // Update hourly forecast (vẫn lấy 8 mục đầu)
-                updateHourlyForecast(hourly, data.timezone);
-                
-                // ➕ THÊM: Update daily forecast (pass hourly forecast for details)
-                updateDailyForecast(daily, hourly);
-                
-            } catch (Exception e) {
-                weatherUI.showError("❌ Lỗi hiển thị dữ liệu");
-            }
-        }
-
-        private void updateHourlyForecast(List<WeatherDataParser.ForecastItem> forecast, int timezone) {
-            try {
-                HBox hourlyBox = weatherUI.getHourlyDetailsBox();
-                if (hourlyBox == null) return;
-                
-                hourlyBox.getChildren().clear();
-                
-                // Hiển thị 8 giờ tiếp theo (mỗi 3 giờ = tổng 24h)
-                int count = Math.min(8, forecast.size());
-                for (int i = 0; i < count; i++) {
-                    WeatherDataParser.ForecastItem item = forecast.get(i);
-                    
-                    String time = WeatherHelper.formatHour(item.dt, timezone);
-                    String iconUrl = WeatherHelper.getWeatherIconUrl(item.iconCode);
-                    double temp = item.temp;
-
-                    VBox hourlyItem = weatherUI.createHourlyItem(time, iconUrl, temp);
-                    hourlyBox.getChildren().add(hourlyItem);
-                }
-                
-            } catch (Exception e) {
-                System.err.println("Error updating hourly forecast: " + e.getMessage());
-            }
-        }
-
-        // nhớ import ở đầu file
-
-        private void updateDailyForecast(List<WeatherDataParser.DailyForecastItem> daily, List<WeatherDataParser.ForecastItem> hourlyForecast) {
-            try {
-                VBox dailyBox = weatherUI.getDailyForecastBox();
-                if (dailyBox == null) return;
-
-                dailyBox.getChildren().clear();
-
-                int count = Math.min(5, daily.size()); // hiển thị 7 ngày nếu có
-                for (int i = 0; i < count; i++) {
-                    WeatherDataParser.DailyForecastItem item = daily.get(i);
-
-                    String day;
-                    if (item.weekday != null && !item.weekday.isEmpty()) {
-                        day = item.weekday + " • " + item.date;
-                    } else {
-                        day = item.date;
-                    }
-                    String iconUrl = WeatherHelper.getWeatherIconUrl(item.iconCode);
-                    double maxTemp = item.maxTemp;
-                    double minTemp = item.minTemp;
-                    String description = item.description != null ? item.description : "";
-
-                    VBox dailyItem = weatherUI.createDailyItem(day, iconUrl, maxTemp, minTemp, description);
-
-                    // ⚡ Thêm sự kiện click để mở chi tiết
-                    dailyItem.setOnMouseClicked(e -> {
-                        // Lấy dự báo theo giờ tương ứng trong ngày đó (lọc từ hourlyForecast được truyền vào)
-                        List<WeatherDataParser.ForecastItem> hourlyForDay = dataParser.filterForecastForDate(hourlyForecast, item.date, item.timezone);
-                        DailyDetailView.show(item, hourlyForDay);
-                    });
-
-                    dailyBox.getChildren().add(dailyItem);
-                }
-
-            } catch (Exception e) {
-                System.err.println("Error updating daily forecast: " + e.getMessage());
-                e.printStackTrace();
-            }
-        }
-
-
-
-        @Override
-        public void stop() {
-            if (clockTimeline != null) {
-                clockTimeline.stop();
-            }
-            if (tcpClient != null) {
-                try {
-                    tcpClient.close();
-                } catch (Exception e) {
-                    System.err.println("Error closing TCP client: " + e.getMessage());
-                }
-            }
-            if (mapWindow != null && mapWindow.isShowing()) {
-                mapWindow.close();
-            }
-        }
-
-     // Add this to the beginning of main() method in client.java
-
-        public static void main(String[] args) {
-            // ===== FIX DPI SCALING =====
-            // Must be set BEFORE launching JavaFX application
-            
-            // Enable HiDPI support
-            System.setProperty("prism.allowhidpi", "true");
-            System.setProperty("glass.win.uiScale", "100%");
-            System.setProperty("glass.win.renderScale", "1.0");
-            
-            // Improve font rendering
-            System.setProperty("awt.useSystemAAFontSettings", "on");
-            System.setProperty("swing.aatext", "true");
-            
-            // WebView optimizations
-            System.setProperty("javafx.webview.uiScale", "1.0");
-            
-            // Detect screen scale factor
-            try {
-                java.awt.GraphicsEnvironment ge = java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment();
-                java.awt.GraphicsDevice gd = ge.getDefaultScreenDevice();
-                java.awt.GraphicsConfiguration gc = gd.getDefaultConfiguration();
-                java.awt.geom.AffineTransform transform = gc.getDefaultTransform();
-                double scaleX = transform.getScaleX();
-                double scaleY = transform.getScaleY();
-                
-                System.out.println("=== DPI Detection ===");
-                System.out.println("Scale X: " + scaleX);
-                System.out.println("Scale Y: " + scaleY);
-                System.out.println("Recommended: " + (scaleX > 1.0 ? "High DPI detected" : "Normal DPI"));
-                System.out.println("====================");
-                
-                // Auto-adjust if high DPI detected
-                if (scaleX > 1.0 || scaleY > 1.0) {
-                    System.setProperty("glass.win.uiScale", "100%");
-                    System.setProperty("prism.order", "sw"); // Use software rendering for better quality
-                }
-            } catch (Exception e) {
-                System.err.println("Could not detect DPI settings: " + e.getMessage());
-            }
-            
-            // Load .env file
-            EnvLoader.load();
-            
-            // Launch JavaFX application
-            launch(args);
-        }
+    public static void main(String[] args) {
+        launch(args);
+    }
 }
