@@ -71,50 +71,72 @@ Hệ thống **Ứng dụng tra cứu thời tiết trực tuyến** được x�
 ## 🚀 3. Một số hình ảnh
 
 ### Giao diện chính của Client  
-![Client Interface](docs/Screenshot%2025-11-24%081849.png)  
+![Client Interface](docs/Screenshot%202025-11-24%20081849.png)  
 Kết nối **Weather Server** qua TCP, nhập tên thành phố để tra cứu thời tiết.  
 
 ### Chi tiết thời tiết  
-![Weather Result](docs/Screenshot%2025-11-24%082542.png)  
+![Weather Result](docs/Screenshot%202025-11-24%20082542.png)  
 Hiển thị thông tin thời tiết chi tiết: nhiệt độ, độ ẩm, gió, trạng thái bầu trời.  
  
 ## Bản đồ thời tiết 
-![Weather Map](docs/Screenshot%2025-11-24%081304.png")
+![Weather Map](docs/Screenshot%202025-11-24%20081304.png)
 Cho phép xem lớp mưa (precipitation), mây (clouds), nhiệt độ (temp), gió (wind) với độ phân giải cao theo thời gian thực.
 
 ## 📝 4. Các bước cài đặt
 
 ### Yêu cầu hệ thống:
-- Java Development Kit (JDK) 11 trở lên
-- IDE: Eclipse, IntelliJ IDEA, hoặc VS Code
-- Kết nối internet (để truy cập WeatherAPI)
+- **Java Development Kit (JDK) 23** trở lên
+- **MySQL 8.0+** (cho tính năng favorites)
+- **IDE**: Eclipse, IntelliJ IDEA, hoặc VS Code với Java Extension Pack
+- **Kết nối internet** (để truy cập OpenWeatherMap API)
 
-### Cài đặt và chạy:
+### Bước 1: Clone dự án
+```bash
+git clone https://github.com/giap1324/LTM-1604-05-ungdungtracuuthoitietonline.git
+cd app123
+```
 
-**Cấu hình API Key** (tùy chọn):
-   - Đăng ký tài khoản tại [WeatherAPI.com](https://www.weatherapi.com/)
-   - Thay thế API key trong `Server.java`:
-   ```java
-   private static final String API_KEY = "YOUR_API_KEY_HERE";
-   ```
+### Bước 2: Cấu hình MySQL Database
+Tạo database và table cho favorites:
+```sql
+CREATE DATABASE IF NOT EXISTS weatherdb CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE weatherdb;
 
-**Biên dịch dự án**:
-   ```bash
-   javac -d bin src/WeatherApp/*.java
-   ```
+CREATE TABLE IF NOT EXISTS favorites (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(64) DEFAULT 'guest',
+    city VARCHAR(200) NOT NULL,
+    country CHAR(2) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY ux_fav (username, city, country)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
 
-**Chạy ứng dụng**:
-   ```bash
-   # Chạy Server trước
-   java -cp bin WeatherApp.Server
-   
-   # Sau đó chạy Client
-   java -cp bin WeatherApp.Client
-   ```
+### Bước 3: Cấu hình API Key
+Đăng ký tài khoản miễn phí tại [OpenWeatherMap.org](https://openweathermap.org/api) và lấy API key.
 
-**Sử dụng**:
-   - Nhấn "Kết nối" → Nhập tên thành phố → "Tra cứu thời tiết"
+**Thay thế API key** trong `server.java`:
+```java
+private static final String API_KEY = "YOUR_API_KEY_HERE";
+```
 
+### Bước 4: Build và chạy ứng dụng
+
+#### Sử dụng Eclipse:
+1. Import project: `File` → `Import` → `Existing Maven Projects`
+2. Chạy `server.java` trước (Right-click → Run As → Java Application)
+3. Sau đó chạy `client.java` (Right-click → Run As → Java Application)
+
+### Bước 5: Sử dụng ứng dụng
+1. **Khởi động Server** → Màn hình console hiển thị: `🌤 Weather Server started on port 2000...`
+2. **Khởi động Client** → Giao diện JavaFX mở ra
+3. **Nhập tên thành phố** vào search box (ví dụ: `Hanoi`, `Ho Chi Minh`, `Tokyo`)
+4. **Nhấn Enter** hoặc click nút tìm kiếm
+5. **Xem kết quả**: Nhiệt độ, độ ẩm, gió, dự báo 5 ngày, bản đồ
+6. **Thêm vào Favorites**: Click nút ⭐ để lưu thành phố yêu thích
+
+
+---
 
 ## ✉️ 5. Liên hệ
 
